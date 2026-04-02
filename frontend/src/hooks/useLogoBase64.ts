@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 
-export function useLogoBase64(src = '/assets/logo.png') {
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+export function useLogoBase64(src = `${BASE}/assets/logo.png`) {
   const [logoBase64, setLogoBase64] = useState('');
 
   useEffect(() => {

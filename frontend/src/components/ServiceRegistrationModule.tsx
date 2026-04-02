@@ -170,7 +170,8 @@ export default function ServiceRegistrationModule() {
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handleResize);
-    const img = new Image(); img.crossOrigin = 'anonymous'; img.src = '/assets/logo.png?t=' + Date.now();
+    const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+    const img = new Image(); img.crossOrigin = 'anonymous'; img.src = base + '/assets/logo.png?t=' + Date.now();
     img.onload = () => {
       const cvs = document.createElement('canvas'); cvs.width = img.naturalWidth || img.width; cvs.height = img.naturalHeight || img.height;
       const ctx = cvs.getContext('2d'); if (ctx) { ctx.drawImage(img, 0, 0); setLogoBase64(cvs.toDataURL('image/png')); }
