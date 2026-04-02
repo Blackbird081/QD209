@@ -63,7 +63,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div className={S.logoIconBox}><Calculator className={S.logoIcon} /></div>
             <div className={S.logoTextCol}>
               <span className={S.logoTitle}>TAN THUAN</span>
-              <span className={S.logoSubtitle}>TienNM-Container Manager</span>
+              <span className={S.logoSubtitle}>©TienNM-Container Manager</span>
             </div>
           </div>
         )}

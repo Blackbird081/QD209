@@ -151,7 +151,7 @@ export default function App() {
             {isAdminMode
               ? <div style={{display:'flex',alignItems:'center',gap:8}}>
                   <span className={S.adminBadge}>{userDisplayName || 'Admin'}</span>
-                  <button onClick={handleLogout} style={{cursor:'pointer',background:'#dc2626',color:'#fff',fontWeight:600,border:'none',borderRadius:6,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:4}}><LogOut style={{width:14,height:14}} /> Thoat</button>
+                  <button onClick={handleLogout} style={{cursor:'pointer',background:'#dc2626',color:'#fff',fontWeight:600,border:'none',borderRadius:6,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:4}}><LogOut style={{width:14,height:14}} /> THOÁT</button>
                 </div>
               : <button onClick={() => setShowLoginModal(true)} style={{cursor:'pointer',background:'#ea580c',color:'#fff',fontWeight:600,border:'none',borderRadius:6,padding:'4px 12px',fontSize:13}}>ĐĂNG NHẬP</button>
             }
