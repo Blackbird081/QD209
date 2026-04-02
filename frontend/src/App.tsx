@@ -146,9 +146,12 @@ export default function App() {
                   <span className={S.hamburgerLine} />
                 </div>
               </button>
-              <span className={S.mobileTitle}>CVF ECOSYSTEM</span>
+              <span className={S.mobileTitle}>TAN THUAN</span>
             </div>
-            {isAdminMode && <div className={S.adminBadge}>Admin</div>}
+            {isAdminMode
+              ? <div className={S.adminBadge}>Admin</div>
+              : <button onClick={() => setShowLoginModal(true)} className={S.adminBadge} style={{cursor:'pointer',background:'#4f46e5'}}>Dang nhap</button>
+            }
           </header>
         )}
 
