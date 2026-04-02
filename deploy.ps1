@@ -75,7 +75,7 @@ pm2 save
 echo "--- PM2 Status ---"
 pm2 status qd209
 '@
-$remoteScript | ssh -i $SSH_KEY $SERVER "bash -s"
+($remoteScript -replace "`r", "") | ssh -i $SSH_KEY $SERVER "bash -s"
 if ($LASTEXITCODE -ne 0) { Write-Host "RESTART FAILED" -ForegroundColor Red; exit 1 }
 
 Write-Host "`n==========================================" -ForegroundColor Green
