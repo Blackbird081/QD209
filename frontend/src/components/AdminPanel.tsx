@@ -49,7 +49,7 @@ const AdminPanel: React.FC = () => {
   const [newPercentSurcharge, setNewPercentSurcharge] = useState("");
 
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState("");
+  const [syncMsg, setSyncMsg] = useState<React.ReactNode>("");
   
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
@@ -164,11 +164,13 @@ const AdminPanel: React.FC = () => {
       const json = await res.json();
       if (json.success && json.data) {
         setNewPriceV1(json.data.priceV1.toString());
-        setNewDate(json.data.effectiveDate || json.data.date);
+        // Keep date field as today — don't overwrite with Petrolimex effective date
+        setNewDate(new Date().toISOString().split('T')[0]);
+        const petrolDate = json.data.effectiveDate || json.data.date;
         if (json.data.parsedFromWeb) {
-          setSyncMsg(`✅ Cào giá thật từ Petrolimex: ${json.data.priceV1.toLocaleString()} đ — Bấm "+ Thêm" để lưu.`);
+          setSyncMsg(<>✅ Cào giá thật từ Petrolimex: <b style={{color:'#22c55e'}}>{Number(json.data.priceV1).toLocaleString()} đ</b> (ngày cập nhật trên Petrolimex: <b style={{color:'#facc15'}}>{petrolDate}</b>) — Bấm &quot;+ Thêm&quot; để lưu.</>);
         } else {
-          setSyncMsg(`⚠️ Không cào được từ web! Đang dùng giá FALLBACK: ${json.data.priceV1.toLocaleString()} đ (ngày ${json.data.effectiveDate}) — Hãy kiểm tra lại trước khi lưu!`);
+          setSyncMsg(<>⚠️ Không cào được từ web! Đang dùng giá FALLBACK: <b style={{color:'#f97316'}}>{Number(json.data.priceV1).toLocaleString()} đ</b> (ngày <b style={{color:'#facc15'}}>{petrolDate}</b>) — Hãy kiểm tra lại trước khi lưu!</>);
         }
       } else {
         setSyncMsg("❌ " + (json.message || "Lỗi dữ liệu."));
