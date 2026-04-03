@@ -172,20 +172,25 @@ export default function App() {
               </button>
               <span className={S.mobileTitle}>TAN THUAN ECOSYSTEM</span>
             </div>
-            {isAdminMode
-              ? <div style={{display:'flex',alignItems:'center',gap:8}}>
-                  <span className={S.adminBadge}>{userDisplayName || 'Admin'}</span>
-                  <button onClick={handleLogout} style={{cursor:'pointer',background:'#dc2626',color:'#fff',fontWeight:600,border:'none',borderRadius:6,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:4}}><LogOut style={{width:14,height:14}} /> THOÁT</button>
-                </div>
-              : <button onClick={() => setShowLoginModal(true)} style={{cursor:'pointer',background:'#ea580c',color:'#fff',fontWeight:600,border:'none',borderRadius:6,padding:'4px 12px',fontSize:13}}>ĐĂNG NHẬP</button>
-            }
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              {isAdminMode
+                ? <>
+                    <span className={S.adminBadge}>{userDisplayName || 'Admin'}</span>
+                    <button onClick={handleLogout} style={{cursor:'pointer',background:'#dc2626',color:'#fff',fontWeight:600,border:'none',borderRadius:6,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:4}}><LogOut style={{width:14,height:14}} /> THOÁT</button>
+                  </>
+                : <button onClick={() => setShowLoginModal(true)} style={{cursor:'pointer',background:'#ea580c',color:'#fff',fontWeight:600,border:'none',borderRadius:6,padding:'4px 12px',fontSize:13}}>ĐĂNG NHẬP</button>
+              }
+              <button onClick={toggleFullscreen} title="Toàn màn hình" className="bg-slate-800 text-white p-2 rounded-lg">
+                <Maximize className="w-4 h-4" />
+              </button>
+            </div>
           </header>
         )}
 
         <main className={S.mainContent}>{renderContent()}</main>
       </div>
 
-      {/* Fullscreen button - PC only */}
+      {/* Fullscreen button - PC only (mobile has it in header) */}
       {!isMobile && (
         <button
           onClick={toggleFullscreen}
