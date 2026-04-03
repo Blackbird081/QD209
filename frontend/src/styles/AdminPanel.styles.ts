@@ -73,6 +73,23 @@ export const tdRose = "px-4 py-2.5 font-bold text-rose-500 text-right bg-rose-50
 export const tdOrange = "px-4 py-2.5 font-bold text-orange-500 text-right bg-orange-50/30";
 export const tdActionCenter = "px-4 py-2.5 text-center";
 export const deleteIconBtn = btnIconDanger;
+
+// ─── Edit / Publish buttons ─────────────────────────────────────────────────
+export const editIconBtn =
+  "p-1.5 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all";
+export const pinIconBtn =
+  "p-1.5 rounded-md text-slate-400 hover:text-amber-600 hover:bg-amber-50 transition-all";
+export const pinActiveBtn =
+  "p-1.5 rounded-md text-amber-500 bg-amber-50 hover:text-amber-700 hover:bg-amber-100 transition-all";
+export const publishedBadge =
+  "ml-2 inline-flex items-center text-[10px] font-bold text-indigo-600 bg-indigo-100 px-1.5 py-0.5 rounded-full";
+export const inlineEditInput =
+  "w-28 bg-white border border-indigo-300 rounded px-2 py-1 text-right text-sm font-bold text-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/30";
+export const inlineEditSaveBtn =
+  "p-1 rounded text-emerald-600 hover:bg-emerald-50 transition-all";
+export const inlineEditCancelBtn =
+  "p-1 rounded text-slate-400 hover:bg-slate-100 transition-all";
+
 export const emptyRow = "px-4 py-6 text-center text-slate-400 font-medium";
 
 // ─── Tiers Tab ──────────────────────────────────────────────────────────────

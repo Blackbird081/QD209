@@ -13,7 +13,11 @@ import {
   FileSpreadsheet,
   Users,
   Pencil,
-  UserPlus
+  UserPlus,
+  Pin,
+  PinOff,
+  Check,
+  X
 } from 'lucide-react';
 
 import * as XLSX from 'xlsx';
@@ -50,6 +54,10 @@ const AdminPanel: React.FC = () => {
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMsg, setSyncMsg] = useState<React.ReactNode>("");
+
+  // Inline edit state for fuel price rows
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [editPriceValue, setEditPriceValue] = useState("");
   
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
 
@@ -231,6 +239,63 @@ const AdminPanel: React.FC = () => {
       await logiStorage.setPrices(updated);
     } catch {
       setError("Lỗi khi xóa giá.");
+    }
+  };
+
+  const handleStartEditPrice = (p: FuelPrice) => {
+    setEditingPriceId(p.id);
+    setEditPriceValue(p.priceV1.toString());
+  };
+
+  const handleCancelEditPrice = () => {
+    setEditingPriceId(null);
+    setEditPriceValue("");
+  };
+
+  const handleSaveEditPrice = async (id: string) => {
+    if (!editPriceValue) return;
+    try {
+      const res = await fetch(`${API_BASE}/api/prices/${id}`, {
+        method: "PUT",
+        headers: authHeader(),
+        body: JSON.stringify({ priceV1: Number(editPriceValue) }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        setEditingPriceId(null);
+        setEditPriceValue("");
+        await fetchData();
+      } else {
+        setError(json.message || "Lỗi khi sửa giá.");
+      }
+    } catch {
+      setError("Lỗi kết nối khi sửa giá.");
+    }
+  };
+
+  const handlePublishPrice = async (id: string, isCurrentlyPublished: boolean) => {
+    try {
+      let res;
+      if (isCurrentlyPublished) {
+        // Unpin → revert to default (latest)
+        res = await fetch(`${API_BASE}/api/prices/publish`, {
+          method: "DELETE",
+          headers: authHeader(),
+        });
+      } else {
+        res = await fetch(`${API_BASE}/api/prices/${id}/publish`, {
+          method: "PUT",
+          headers: authHeader(),
+        });
+      }
+      const json = await res.json();
+      if (json.success) {
+        await fetchData();
+      } else {
+        setError(json.message || "Lỗi khi ghim giá.");
+      }
+    } catch {
+      setError("Lỗi kết nối khi ghim giá.");
     }
   };
 
@@ -452,10 +517,42 @@ const AdminPanel: React.FC = () => {
                      <tbody className={S.tbody}>
                        {[...prices].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((p, index, array) => {
                          const delta = index < array.length - 1 ? p.priceV1 - array[index + 1].priceV1 : 0;
+                         const isEditing = editingPriceId === p.id;
+                         const hasAnyPublished = prices.some(x => x.isPublished);
+                         const isPublished = p.isPublished;
+                         // If none is explicitly published, the newest (index 0) is the default
+                         const isEffective = isPublished || (!hasAnyPublished && index === 0);
                          return (
-                         <tr key={p.id} className={S.row}>
-                           <td className={S.tdDate}>{new Date(p.date).toLocaleDateString('vi-VN')}</td>
-                           <td className={S.tdPrice}>{p.priceV1.toLocaleString('vi-VN')} đ</td>
+                         <tr key={p.id} className={`${S.row} ${isEffective ? 'ring-1 ring-indigo-300 bg-indigo-50/40' : ''}`}>
+                           <td className={S.tdDate}>
+                             {new Date(p.date).toLocaleDateString('vi-VN')}
+                             {isEffective && <span className={S.publishedBadge}>📌 Đang dùng</span>}
+                           </td>
+                           <td className={S.tdPrice}>
+                             {isEditing ? (
+                               <div className="flex items-center gap-1 justify-end">
+                                 <input
+                                   type="number"
+                                   value={editPriceValue}
+                                   onChange={e => setEditPriceValue(e.target.value)}
+                                   className={S.inlineEditInput}
+                                   autoFocus
+                                   onKeyDown={e => {
+                                     if (e.key === 'Enter') handleSaveEditPrice(p.id);
+                                     if (e.key === 'Escape') handleCancelEditPrice();
+                                   }}
+                                 />
+                                 <button onClick={() => handleSaveEditPrice(p.id)} className={S.inlineEditSaveBtn} title="Lưu">
+                                   <Check className="w-3.5 h-3.5" />
+                                 </button>
+                                 <button onClick={handleCancelEditPrice} className={S.inlineEditCancelBtn} title="Hủy">
+                                   <X className="w-3.5 h-3.5" />
+                                 </button>
+                               </div>
+                             ) : (
+                               <>{p.priceV1.toLocaleString('vi-VN')} đ</>
+                             )}
+                           </td>
                            <td className={S.tdDeltaCenter}>
                               {delta > 0 && <span className={S.deltaUp}>+ {delta.toLocaleString('vi-VN')} đ (Tăng)</span>}
                               {delta < 0 && <span className={S.deltaDown}>- {Math.abs(delta).toLocaleString('vi-VN')} đ (Giảm)</span>}
@@ -466,14 +563,26 @@ const AdminPanel: React.FC = () => {
                            <td className={S.tdOrange}>{getSurchargeFromPrice(p.priceV1, '20E').toLocaleString('vi-VN')} đ</td>
                            <td className={S.tdOrange}>{getSurchargeFromPrice(p.priceV1, '40E').toLocaleString('vi-VN')} đ</td>
                            <td className={S.tdActionCenter}>
-                             <button onClick={() => handleDeletePrice(p.id)} className={S.deleteIconBtn} title="Xóa giá này">
-                               <Trash2 className="w-4 h-4" />
-                             </button>
+                             <div className="flex items-center justify-center gap-1">
+                               <button onClick={() => handleStartEditPrice(p)} className={S.editIconBtn} title="Sửa giá">
+                                 <Pencil className="w-4 h-4" />
+                               </button>
+                               <button
+                                 onClick={() => handlePublishPrice(p.id, !!isPublished)}
+                                 className={isEffective ? S.pinActiveBtn : S.pinIconBtn}
+                                 title={isEffective ? "Bỏ ghim (dùng giá mới nhất)" : "Ghim giá này lên Trang chủ"}
+                               >
+                                 {isEffective ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                               </button>
+                               <button onClick={() => handleDeletePrice(p.id)} className={S.deleteIconBtn} title="Xóa giá này">
+                                 <Trash2 className="w-4 h-4" />
+                               </button>
+                             </div>
                            </td>
                          </tr>
                        )})}
                        {prices.length === 0 && (
-                         <tr><td colSpan={7} className={S.emptyRow}>Chưa có dữ liệu thống kê.</td></tr>
+                         <tr><td colSpan={8} className={S.emptyRow}>Chưa có dữ liệu thống kê.</td></tr>
                        )}
                      </tbody>
                    </table>

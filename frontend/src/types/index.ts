@@ -3,6 +3,7 @@ export interface FuelPrice {
   date: string;
   fuelType: string;
   priceV1: number;
+  isPublished?: boolean;
 }
 
 export interface Tier {

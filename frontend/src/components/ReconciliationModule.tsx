@@ -33,11 +33,12 @@ export default function ReconciliationModule() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Helper to find latest fuel price
+  // Helper to find the effective fuel price (published > latest)
   const getLatestFuelPrice = () => {
     const dieselPrices = prices.filter(p => p.fuelType === "Dầu DO 0,05S-II");
     if (dieselPrices.length === 0) return 0;
-    // Sort logic depends on how dates are stored, assuming string sortable
+    const published = dieselPrices.find(p => p.isPublished);
+    if (published) return published.priceV1;
     const latest = dieselPrices.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
     return latest.priceV1;
   };

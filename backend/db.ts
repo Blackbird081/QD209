@@ -49,7 +49,7 @@ export async function withTransaction<T>(fn: (client: pg.PoolClient) => Promise<
 
 // fuel_prices
 export async function getAllPrices() {
-  return query("SELECT id, date, fuel_type AS \"fuelType\", price_v1 AS \"priceV1\" FROM fuel_prices ORDER BY date DESC");
+  return query("SELECT id, date, fuel_type AS \"fuelType\", price_v1 AS \"priceV1\", is_published AS \"isPublished\" FROM fuel_prices ORDER BY date DESC");
 }
 export async function replacePrices(rows: any[], client?: pg.PoolClient) {
   const q = client ?? pool;

@@ -28,8 +28,11 @@ const FullscreenOverlay: React.FC<Props> = ({ onExit }) => {
   );
 
   const latestPrice = sortedPrices.length > 0 ? sortedPrices[sortedPrices.length - 1] : null;
-  const prevPrice = sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 2] : null;
-  const currentPriceValue = latestPrice?.priceV1 ?? 0;
+  const publishedPrice = prices.find(p => p.isPublished) ?? latestPrice;
+  const currentPriceValue = publishedPrice?.priceV1 ?? 0;
+
+  const publishedIdx = publishedPrice ? sortedPrices.findIndex(p => p.id === publishedPrice.id) : -1;
+  const prevPrice = publishedIdx > 0 ? sortedPrices[publishedIdx - 1] : null;
 
   const sortedTiers = useMemo(() => [...tiers].sort((a, b) => a.minPrice - b.minPrice), [tiers]);
   const tierIndex = findContainerTierIndex(currentPriceValue, sortedTiers);
@@ -41,12 +44,12 @@ const FullscreenOverlay: React.FC<Props> = ({ onExit }) => {
   );
   const bulkTierIndex = activeBulk ? sortedBulkTiers.indexOf(activeBulk) + 1 : 0;
 
-  const priceDelta = latestPrice && prevPrice ? latestPrice.priceV1 - prevPrice.priceV1 : 0;
+  const priceDelta = publishedPrice && prevPrice ? publishedPrice.priceV1 - prevPrice.priceV1 : 0;
   const isUp = priceDelta > 0;
   const isDown = priceDelta < 0;
 
-  const dateStr = latestPrice
-    ? new Date(latestPrice.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const dateStr = publishedPrice
+    ? new Date(publishedPrice.date).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
     : '—';
 
   return (
@@ -82,7 +85,7 @@ const FullscreenOverlay: React.FC<Props> = ({ onExit }) => {
             <div className="text-center">
               <p className="text-white/50 font-bold text-xs uppercase tracking-widest mb-1">Giá Dầu DO 0,05S-II</p>
               <div className="flex items-baseline justify-center gap-2">
-                <span className="text-5xl font-black tracking-tight">{latestPrice ? fmt(latestPrice.priceV1) : '—'}</span>
+                <span className="text-5xl font-black tracking-tight">{publishedPrice ? fmt(publishedPrice.priceV1) : '—'}</span>
                 <span className="text-white/40 font-bold text-base">VND/Lít</span>
               </div>
             </div>

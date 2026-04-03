@@ -34,7 +34,11 @@ const SurchargeCalculator: React.FC<SurchargeCalculatorProps> = ({ onAddToQuotat
   const [quantity, setQuantity] = useState<string>("1");
 
   const fuelTypes = ["Dầu DO 0,05S-II"];
-  const latestPrices = fuelTypes.map(type => prices.find(p => p.fuelType === type)).filter(Boolean) as FuelPrice[];
+  // Respect published price if one is pinned, otherwise use the first (newest) price for each fuel type
+  const latestPrices = fuelTypes.map(type => {
+    const published = prices.find(p => p.fuelType === type && p.isPublished);
+    return published ?? prices.find(p => p.fuelType === type);
+  }).filter(Boolean) as FuelPrice[];
 
   const currentDiesel = latestPrices.find(p => p.fuelType === "Dầu DO 0,05S-II");
   const currentDieselPrice = currentDiesel ? currentDiesel.priceV1 : 0;

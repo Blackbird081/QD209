@@ -21,11 +21,19 @@ END $$;
 
 -- 2. Fuel prices
 CREATE TABLE IF NOT EXISTS fuel_prices (
-  id        SERIAL PRIMARY KEY,
-  date      DATE         NOT NULL UNIQUE,
-  fuel_type VARCHAR(50)  NOT NULL DEFAULT 'Dầu DO 0,05S-II',
-  price_v1  INTEGER      NOT NULL
+  id           SERIAL PRIMARY KEY,
+  date         DATE         NOT NULL UNIQUE,
+  fuel_type    VARCHAR(50)  NOT NULL DEFAULT 'Dầu DO 0,05S-II',
+  price_v1     INTEGER      NOT NULL,
+  is_published BOOLEAN      NOT NULL DEFAULT FALSE
 );
+
+-- Migration: add is_published if missing
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='fuel_prices' AND column_name='is_published') THEN
+    ALTER TABLE fuel_prices ADD COLUMN is_published BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
+END $$;
 
 -- Deduplicate legacy rows (keep lowest id per date)
 DELETE FROM fuel_prices a

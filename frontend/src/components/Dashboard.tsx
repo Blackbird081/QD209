@@ -52,13 +52,19 @@ const Dashboard: React.FC = () => {
   );
 
   const latestPrice = sortedPrices.length > 0 ? sortedPrices[sortedPrices.length - 1] : null;
-  const prevPrice = sortedPrices.length > 1 ? sortedPrices[sortedPrices.length - 2] : null;
-  const currentPriceValue = latestPrice?.priceV1 ?? 0;
+  // Use the explicitly published price if one exists, otherwise default to the latest
+  const publishedPrice = prices.find(p => p.isPublished) ?? latestPrice;
+  const currentPriceValue = publishedPrice?.priceV1 ?? 0;
+
+  // Find the price immediately before the published one (by date order)
+  const publishedIdx = publishedPrice ? sortedPrices.findIndex(p => p.id === publishedPrice.id) : -1;
+  const prevPrice = publishedIdx > 0 ? sortedPrices[publishedIdx - 1] : null;
+
   const tierIndex = findContainerTierIndex(currentPriceValue, tiers);
   const sortedTiers = useMemo(() => [...tiers].sort((a, b) => a.minPrice - b.minPrice), [tiers]);
   const currentTier = sortedTiers[tierIndex - 1] ?? null;
 
-  const priceDelta = latestPrice && prevPrice ? latestPrice.priceV1 - prevPrice.priceV1 : 0;
+  const priceDelta = publishedPrice && prevPrice ? publishedPrice.priceV1 - prevPrice.priceV1 : 0;
   const priceDeltaPct = prevPrice && prevPrice.priceV1 > 0
     ? ((priceDelta / prevPrice.priceV1) * 100).toFixed(1)
     : '0.0';
@@ -107,13 +113,13 @@ const Dashboard: React.FC = () => {
               </div>*/}
               <p className={S.fuelSubLabel}>Giá Dầu DO 0,05S-II Hiện Tại:</p>
               <div className={S.fuelPriceRow}>
-                <span className={S.fuelPriceValue}>{latestPrice ? formatPrice(latestPrice.priceV1) : '—'}</span>
+                <span className={S.fuelPriceValue}>{publishedPrice ? formatPrice(publishedPrice.priceV1) : '—'}</span>
                 <span className={S.fuelPriceUnit}>VND / Lít</span>
               </div>
               <div className={S.fuelMetaRow}>
                 <div className={S.fuelDateChip}>
                   <Clock className={S.fuelDateIcon} />
-                  <span className={S.fuelDateText}>{latestPrice ? formatDateVN(latestPrice.date) : '—'}</span>
+                  <span className={S.fuelDateText}>{publishedPrice ? formatDateVN(publishedPrice.date) : '—'}</span>
                 </div>
                 <div className={cn(S.fuelDeltaBase, deltaStyle)}>
                   {isUp ? <TrendingUp className={S.fuelDeltaIcon} /> : isDown ? <TrendingDown className={S.fuelDeltaIcon} /> : <TrendingUp className={S.fuelDeltaIcon} />}
