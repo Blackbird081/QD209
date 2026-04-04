@@ -172,16 +172,16 @@ export default function App() {
               </button>
               <span className={S.mobileTitle}>TAN THUAN ECOSYSTEM</span>
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div className="flex items-center gap-1.5">
               {isAdminMode
                 ? <>
                     <span className={S.adminBadge}>{userDisplayName || 'Admin'}</span>
-                    <button onClick={handleLogout} style={{cursor:'pointer',background:'#dc2626',color:'#fff',fontWeight:600,border:'none',borderRadius:6,padding:'4px 10px',fontSize:12,display:'flex',alignItems:'center',gap:4}}><LogOut style={{width:14,height:14}} /> THOÁT</button>
+                    <button onClick={handleLogout} className={`${S.headerBtn} ${S.logoutBtn}`}><LogOut className={S.fullscreenIcon} /> THOÁT</button>
                   </>
-                : <button onClick={() => setShowLoginModal(true)} style={{cursor:'pointer',background:'#ea580c',color:'#fff',fontWeight:600,border:'none',borderRadius:6,padding:'4px 12px',fontSize:13}}>ĐĂNG NHẬP</button>
+                : <button onClick={() => setShowLoginModal(true)} className={`${S.headerBtn} ${S.loginBtn}`}>ĐĂNG NHẬP</button>
               }
-              <button onClick={toggleFullscreen} title="Toàn màn hình" className="bg-slate-800 text-white p-2 rounded-lg">
-                <Maximize className="w-4 h-4" />
+              <button onClick={toggleFullscreen} title="Toàn màn hình" className={`${S.headerBtn} ${S.fullscreenBtn}`}>
+                <Maximize className={S.fullscreenIcon} />
               </button>
             </div>
           </header>

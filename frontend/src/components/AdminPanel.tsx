@@ -616,32 +616,20 @@ const AdminPanel: React.FC = () => {
                          {isExpanded && (
                            <tr className={S.expandedRow}>
                              <td colSpan={6} className={S.expandedCell}>
-                               <div className={S.expandedGrid}>
-                                 <div className={S.expandedSection}>
-                                   <div className={S.expandedSectionTitle}>📦 Hàng Container</div>
-                                   <div className={S.expandedDetailRow}>
-                                     <span className={S.expandedLabel}>20 Feet Full:</span>
-                                     <span className={S.expandedValueRose}>{getSurchargeFromPrice(p.priceV1, '20F').toLocaleString('vi-VN')} đ</span>
-                                   </div>
-                                   <div className={S.expandedDetailRow}>
-                                     <span className={S.expandedLabel}>20 Feet Empty:</span>
-                                     <span className={S.expandedValueRose}>{getSurchargeFromPrice(p.priceV1, '20E').toLocaleString('vi-VN')} đ</span>
-                                   </div>
-                                   <div className={S.expandedDetailRow}>
-                                     <span className={S.expandedLabel}>40 Feet Full:</span>
-                                     <span className={S.expandedValueRose}>{getSurchargeFromPrice(p.priceV1, '40F').toLocaleString('vi-VN')} đ</span>
-                                   </div>
-                                   <div className={S.expandedDetailRow}>
-                                     <span className={S.expandedLabel}>40 Feet Empty:</span>
-                                     <span className={S.expandedValueRose}>{getSurchargeFromPrice(p.priceV1, '40E').toLocaleString('vi-VN')} đ</span>
-                                   </div>
+                               <div className={S.expandedWrapper}>
+                                 <div className={S.expandedInlineSection}>
+                                   <span className={S.expandedSectionTitle}>📦 Hàng Container</span>
+                                   <span className={S.expandedInlineItem}><span className={S.expandedLabel}>20E:</span> <span className={S.expandedValueRose}>{getSurchargeFromPrice(p.priceV1, '20E').toLocaleString('vi-VN')} đ</span></span>
+                                   <span className={S.expandedInlineSep}>|</span>
+                                   <span className={S.expandedInlineItem}><span className={S.expandedLabel}>40E:</span> <span className={S.expandedValueRose}>{getSurchargeFromPrice(p.priceV1, '40E').toLocaleString('vi-VN')} đ</span></span>
+                                   <span className={S.expandedInlineSep}>|</span>
+                                   <span className={S.expandedInlineItem}><span className={S.expandedLabel}>20F:</span> <span className={S.expandedValueRose}>{getSurchargeFromPrice(p.priceV1, '20F').toLocaleString('vi-VN')} đ</span></span>
+                                   <span className={S.expandedInlineSep}>|</span>
+                                   <span className={S.expandedInlineItem}><span className={S.expandedLabel}>40F:</span> <span className={S.expandedValueRose}>{getSurchargeFromPrice(p.priceV1, '40F').toLocaleString('vi-VN')} đ</span></span>
                                  </div>
-                                 <div className={S.expandedSection}>
-                                   <div className={S.expandedSectionTitle}>📦 Hàng Ngoài Container</div>
-                                   <div className={S.expandedDetailRow}>
-                                     <span className={S.expandedLabel}>Tỉ lệ phụ thu:</span>
-                                     <span className={S.expandedValueOrange}>{getBulkTierPercent(p.priceV1)}</span>
-                                   </div>
+                                 <div className={S.expandedInlineSection}>
+                                   <span className={S.expandedSectionTitle}>🚛 Hàng Rời (Bulk)</span>
+                                   <span className={S.expandedInlineItem}><span className={S.expandedLabel}>Tỉ lệ phụ thu:</span> <span className={S.expandedValueOrange}>{getBulkTierPercent(p.priceV1)}</span></span>
                                  </div>
                                </div>
                              </td>

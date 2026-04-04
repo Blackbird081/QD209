@@ -13,7 +13,12 @@ export const hamburgerBtn = "p-2 text-slate-500 hover:bg-slate-100 rounded-lg";
 export const hamburgerLines = "w-6 h-5 flex flex-col justify-between";
 export const hamburgerLine = "w-full h-0.5 bg-slate-600 rounded-full";
 export const mobileTitle = "font-bold text-slate-800 uppercase tracking-tight text-sm";
-export const adminBadge = "px-2 py-1 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded-md uppercase";
+export const adminBadge = "px-2.5 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-bold rounded-lg uppercase";
+export const headerBtn = "cursor-pointer font-semibold border-none rounded-lg px-3 py-1.5 text-xs flex items-center gap-1.5 transition-colors";
+export const logoutBtn = "bg-red-600 hover:bg-red-700 text-white";
+export const loginBtn = "bg-orange-600 hover:bg-orange-700 text-white";
+export const fullscreenBtn = "bg-slate-800 hover:bg-indigo-600 text-white p-1.5 rounded-lg transition-colors";
+export const fullscreenIcon = "w-4 h-4";
 
 // ─── Loading / Error ────────────────────────────────────────────────────────
 export const loadingWrapper = "flex flex-col items-center justify-center h-full gap-4";

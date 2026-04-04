@@ -101,13 +101,14 @@ export const tierBadge =
 // ─── Expanded Detail Row ──────────────────────────────────────────────────────
 export const expandedRow = "bg-slate-50/60";
 export const expandedCell = "px-4 py-3";
-export const expandedGrid = "grid grid-cols-2 gap-4 max-w-lg ml-10";
-export const expandedSection = "space-y-1.5";
-export const expandedSectionTitle = "text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1";
-export const expandedDetailRow = "flex items-center justify-between text-sm";
-export const expandedLabel = "text-slate-500 font-medium";
-export const expandedValueRose = "font-bold text-rose-600";
-export const expandedValueOrange = "font-bold text-orange-500";
+export const expandedWrapper = "flex flex-col gap-1.5 ml-10";
+export const expandedInlineSection = "flex items-center gap-3 flex-wrap text-[13px]";
+export const expandedInlineItem = "flex items-center gap-1.5";
+export const expandedInlineSep = "text-slate-300 text-[13px]";
+export const expandedSectionTitle = "text-[13px] font-bold text-slate-500 uppercase tracking-wider w-[160px] shrink-0";
+export const expandedLabel = "text-slate-500 text-[13px]";
+export const expandedValueRose = "font-semibold text-rose-600 text-[13px]";
+export const expandedValueOrange = "font-semibold text-orange-500 text-[13px]";
 
 // ─── Tiers Tab ──────────────────────────────────────────────────────────────
 export const tierForm = "space-y-5";
