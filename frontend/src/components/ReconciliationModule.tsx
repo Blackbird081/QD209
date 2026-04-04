@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   QrCode,
   ClipboardCheck,
@@ -8,7 +8,11 @@ import {
   AlertCircle,
   RefreshCcw,
   FileSpreadsheet,
-  Download
+  Download,
+  ArrowUpDown,
+  Filter,
+  ChevronUp,
+  ChevronDown
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useAppContext } from '../context/AppContext';
@@ -82,6 +86,8 @@ export default function ReconciliationModule() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [validationSummary, setValidationSummary] = useState<ReconciliationValidationSummary | null>(null);
+  const [dateFilter, setDateFilter] = useState<string>('all');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
 
   const qrFileInputRef = useRef<HTMLInputElement>(null);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
@@ -422,9 +428,42 @@ export default function ReconciliationModule() {
 
   const executionFuelPrice = getFuelPriceForDate(prices, executionDate);
   const processedSummary = summarizeProcessedRows(processedOrders);
-  const totalPages = Math.max(1, Math.ceil(processedOrders.length / pageSize));
-  const startIndex = processedOrders.length === 0 ? 0 : (currentPage - 1) * pageSize;
-  const paginatedOrders = processedOrders.slice(startIndex, startIndex + pageSize);
+
+  // === Filter & Sort logic ===
+  const uniqueBookingDates = useMemo(() => {
+    const dateSet = new Set<string>();
+    processedOrders.forEach(row => {
+      const d = row.bookingDate;
+      if (d) dateSet.add(d);
+    });
+    return [...dateSet].sort();
+  }, [processedOrders]);
+
+  const filteredOrders = useMemo(() => {
+    if (dateFilter === 'all') return processedOrders;
+    return processedOrders.filter(row => row.bookingDate === dateFilter);
+  }, [processedOrders, dateFilter]);
+
+  const sortedOrders = useMemo(() => {
+    const copy = [...filteredOrders];
+    if (sortDirection === 'desc') copy.reverse();
+    return copy;
+  }, [filteredOrders, sortDirection]);
+
+  const totalPages = Math.max(1, Math.ceil(sortedOrders.length / pageSize));
+  const startIndex = sortedOrders.length === 0 ? 0 : (currentPage - 1) * pageSize;
+  const paginatedOrders = sortedOrders.slice(startIndex, startIndex + pageSize);
+
+  // Group rows by booking date for display headers
+  const dateGroupFuelPrices = useMemo(() => {
+    const map = new Map<string, number | null>();
+    processedOrders.forEach(row => {
+      if (row.bookingDate && !map.has(row.bookingDate)) {
+        map.set(row.bookingDate, row.fuelPriceAtBooking);
+      }
+    });
+    return map;
+  }, [processedOrders]);
 
   const handleRestoreImportHistory = (item: ReconciliationImportHistoryItem) => {
     setImportedOrders(item.rows);
@@ -795,62 +834,136 @@ export default function ReconciliationModule() {
                   </div>
                 </div>
 
+                {/* === Filter & Sort Toolbar === */}
+                <div className="flex flex-wrap items-center gap-3 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <Filter className="w-4 h-4 text-slate-400" />
+                    <label className="text-xs font-bold text-slate-500 uppercase tracking-widest">Ngày lệnh:</label>
+                    <select
+                      value={dateFilter}
+                      onChange={e => { setDateFilter(e.target.value); setCurrentPage(1); }}
+                      className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 min-w-[160px]"
+                    >
+                      <option value="all">Tất cả ({processedOrders.length})</option>
+                      {uniqueBookingDates.map(d => {
+                        const count = processedOrders.filter(r => r.bookingDate === d).length;
+                        const fuelPrice = dateGroupFuelPrices.get(d);
+                        return (
+                          <option key={d} value={d}>
+                            {displayDate(d)} — {fuelPrice ? fuelPrice.toLocaleString('vi-VN') + 'đ' : '?'} ({count})
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="w-px h-6 bg-slate-200 hidden sm:block" />
+                  <button
+                    onClick={() => { setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}
+                    className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-600 hover:bg-slate-100 transition"
+                  >
+                    <ArrowUpDown className="w-4 h-4" />
+                    STT {sortDirection === 'asc' ? (
+                      <><ChevronUp className="w-3 h-3" /> Tăng dần</>
+                    ) : (
+                      <><ChevronDown className="w-3 h-3" /> Giảm dần</>
+                    )}
+                  </button>
+                  {dateFilter !== 'all' && (
+                    <button
+                      onClick={() => { setDateFilter('all'); setCurrentPage(1); }}
+                      className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition"
+                    >
+                      ✕ Bỏ lọc
+                    </button>
+                  )}
+                  <div className="ml-auto text-xs text-slate-400 font-medium">
+                    Hiển thị {sortedOrders.length} / {processedOrders.length} dòng
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto border border-slate-200 rounded-3xl">
                   <table className="w-full min-w-[1100px] text-left border-collapse">
                     <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-widest">
                       <tr>
-                        <th className="px-4 py-3 border-b border-slate-200 text-center">STT</th>
+                        <th className="px-4 py-3 border-b border-slate-200 text-center cursor-pointer select-none" onClick={() => { setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc'); setCurrentPage(1); }}>
+                          STT {sortDirection === 'asc' ? '▲' : '▼'}
+                        </th>
                         <th className="px-4 py-3 border-b border-slate-200">Số lệnh</th>
                         <th className="px-4 py-3 border-b border-slate-200">Container</th>
                         <th className="px-4 py-3 border-b border-slate-200">Loại</th>
-                        <th className="px-4 py-3 border-b border-slate-200">Ngày lệnh</th>
-                        <th className="px-4 py-3 border-b border-slate-200 text-right">Giá dầu ngày lệnh</th>
-                        <th className="px-4 py-3 border-b border-slate-200 text-right">Giá dầu ngày thực hiện</th>
-                        <th className="px-4 py-3 border-b border-slate-200 text-right">Phụ thu ngày lệnh</th>
-                        <th className="px-4 py-3 border-b border-slate-200 text-right">Phụ thu ngày thực hiện</th>
+                        <th className="px-4 py-3 border-b border-slate-200">Ngày làm Thủ tục</th>
+                        <th className="px-4 py-3 border-b border-slate-200 text-right">Giá dầu ban đầu</th>
+                        <th className="px-4 py-3 border-b border-slate-200 text-right">Giá dầu thực hiện </th>
+                        <th className="px-4 py-3 border-b border-slate-200 text-right">Phụ thu ban đầu</th>
+                        <th className="px-4 py-3 border-b border-slate-200 text-right">Phụ thu thực hiện</th>
                         <th className="px-4 py-3 border-b border-slate-200 text-right">Chênh lệch</th>
                         <th className="px-4 py-3 border-b border-slate-200 text-center">Điều chỉnh</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {paginatedOrders.map((row, index) => (
-                        <tr key={`${row.orderNo}-${row.containerNumber}-${index}`} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 border-b border-slate-100 text-center text-xs font-bold text-slate-500">{startIndex + index + 1}</td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-xs font-bold text-slate-700">{row.orderNo}</td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-xs text-slate-600">
-                            <p className="font-bold text-slate-700">{row.containerNumber}</p>
-                            <p className="text-[10px] text-slate-400">{row.note || 'Không có ghi chú'}</p>
-                          </td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-xs font-bold text-slate-600">{row.containerType ?? 'Không rõ'}</td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-xs text-slate-600">{row.bookingDateTimeDisplay || row.bookingDateDisplay}</td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-slate-600">{row.fuelPriceAtBooking?.toLocaleString('vi-VN') ?? '-'}</td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-slate-600">{row.fuelPriceAtExecution?.toLocaleString('vi-VN') ?? '-'}</td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-slate-600">{row.surchargeAtBooking?.toLocaleString('vi-VN') ?? '-'}</td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-indigo-600">{row.surchargeAtExecution?.toLocaleString('vi-VN') ?? '-'}</td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-black">
-                            <span className={
-                              row.status === 'increase' ? 'text-rose-600' :
-                              row.status === 'decrease' ? 'text-emerald-600' :
-                              row.status === 'same' ? 'text-slate-500' :
-                              'text-amber-600'
-                            }>
-                              {row.delta === null ? '-' : `${row.delta > 0 ? '+' : ''}${row.delta.toLocaleString('vi-VN')}`}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 border-b border-slate-100 text-center">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${statusClasses[row.status]}`}>
-                              {row.adjustmentLabel}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
+                      {paginatedOrders.map((row, index) => {
+                        // Check if this row starts a new booking date group
+                        const prevRow = index > 0 ? paginatedOrders[index - 1] : null;
+                        const isNewDateGroup = !prevRow || prevRow.bookingDate !== row.bookingDate;
+                        return (
+                          <React.Fragment key={`${row.orderNo}-${row.containerNumber}-${index}`}>
+                            {isNewDateGroup && row.bookingDate && (
+                              <tr className="bg-indigo-50/70">
+                                <td colSpan={11} className="px-4 py-2 border-b border-indigo-100">
+                                  <div className="flex items-center gap-3">
+                                    <span className="text-xs font-black text-indigo-700 uppercase tracking-widest">
+                                      📅 Ngày lệnh: {displayDate(row.bookingDate)}
+                                    </span>
+                                    <span className="w-px h-4 bg-indigo-200" />
+                                    <span className="text-xs font-bold text-indigo-500">
+                                      Giá dầu: {row.fuelPriceAtBooking?.toLocaleString('vi-VN') ?? '—'} đ
+                                    </span>
+                                    <span className="text-[10px] text-indigo-400">
+                                      ({processedOrders.filter(r => r.bookingDate === row.bookingDate).length} lệnh)
+                                    </span>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                            <tr className="hover:bg-slate-50">
+                              <td className="px-4 py-3 border-b border-slate-100 text-center text-xs font-bold text-slate-500">{startIndex + index + 1}</td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-xs font-bold text-slate-700">{row.orderNo}</td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-xs text-slate-600">
+                                <p className="font-bold text-slate-700">{row.containerNumber}</p>
+                                <p className="text-[10px] text-slate-400">{row.note || 'Không có ghi chú'}</p>
+                              </td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-xs font-bold text-slate-600">{row.containerType ?? 'Không rõ'}</td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-xs text-slate-600">{row.bookingDateTimeDisplay || row.bookingDateDisplay}</td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-slate-600">{row.fuelPriceAtBooking?.toLocaleString('vi-VN') ?? '-'}</td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-slate-600">{row.fuelPriceAtExecution?.toLocaleString('vi-VN') ?? '-'}</td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-slate-600">{row.surchargeAtBooking?.toLocaleString('vi-VN') ?? '-'}</td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-indigo-600">{row.surchargeAtExecution?.toLocaleString('vi-VN') ?? '-'}</td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-black">
+                                <span className={
+                                  row.status === 'increase' ? 'text-rose-600' :
+                                  row.status === 'decrease' ? 'text-emerald-600' :
+                                  row.status === 'same' ? 'text-slate-500' :
+                                  'text-amber-600'
+                                }>
+                                  {row.delta === null ? '-' : `${row.delta > 0 ? '+' : ''}${row.delta.toLocaleString('vi-VN')}`}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 border-b border-slate-100 text-center">
+                                <span className={`px-2.5 py-1 rounded-full text-[10px] font-black ${statusClasses[row.status]}`}>
+                                  {row.adjustmentLabel}
+                                </span>
+                              </td>
+                            </tr>
+                          </React.Fragment>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
 
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                   <p className="text-sm text-slate-500">
-                    Trang <span className="font-bold text-slate-700">{currentPage}</span> / <span className="font-bold text-slate-700">{totalPages}</span> | Hiển thị <span className="font-bold text-slate-700">{processedOrders.length === 0 ? 0 : startIndex + 1}-{Math.min(startIndex + pageSize, processedOrders.length)}</span> / <span className="font-bold text-slate-700">{processedOrders.length}</span>
+                    Trang <span className="font-bold text-slate-700">{currentPage}</span> / <span className="font-bold text-slate-700">{totalPages}</span> | Hiển thị <span className="font-bold text-slate-700">{sortedOrders.length === 0 ? 0 : startIndex + 1}-{Math.min(startIndex + pageSize, sortedOrders.length)}</span> / <span className="font-bold text-slate-700">{sortedOrders.length}</span>{dateFilter !== 'all' && <span className="text-indigo-500 font-bold"> (lọc từ {processedOrders.length})</span>}
                   </p>
                   <div className="flex flex-col sm:flex-row items-center gap-2">
                     <div className="flex items-center gap-3">

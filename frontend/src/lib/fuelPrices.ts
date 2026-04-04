@@ -192,27 +192,62 @@ export const getSourcePriceEffectiveTimestamp = (price: FuelPrice) =>
     ? getDateTimeTimestamp(price.effectiveAt)
     : getDateTimestamp(price.date);
 
-const shouldRollToNextBusinessMorning = (price: FuelPrice) => {
-  const normalizedSource = normalizeDateTimeInput(price.effectiveAt);
-  if (!normalizedSource) return false;
-  return !normalizedSource.endsWith('T00:00:00+07:00');
-};
-
+/**
+ * Xác định mốc thời gian áp dụng phụ thu từ effectiveAt.
+ * Quy tắc:
+ * - Nếu không có effectiveAt → dùng ngày (date) lúc 08:00
+ * - effectiveAt lúc midnight (00:00:00) → dùng ngày đó lúc 08:00
+ * - effectiveAt >= 08:00 ban ngày (VD: 08:00, 15:00) → dùng luôn giá trị effectiveAt
+ * - effectiveAt < 08:00 sáng (VD: 01:00, 05:00) → roll lên 08:00 CÙNG ngày
+ * - effectiveAt ban đêm >= 17:00 (VD: 23:30) → roll lên 08:00 NGÀY SAU
+ */
 export const getSurchargeEffectiveAt = (price: FuelPrice) => {
   const normalizedDate = normalizeDateInput(price.date);
   const normalizedSource = normalizeDateTimeInput(price.effectiveAt || price.date);
 
-  if (shouldRollToNextBusinessMorning(price) && normalizedSource) {
-    const sourceDate = normalizedSource.slice(0, 10);
-    const nextDate = shiftIsoDateByDays(sourceDate, 1);
-    return buildIsoDateTime(
-      Number(nextDate.slice(0, 4)),
-      Number(nextDate.slice(5, 7)),
-      Number(nextDate.slice(8, 10)),
-      SURCHARGE_APPLY_HOUR,
-      0,
-      0
-    );
+  if (normalizedSource) {
+    const hourMatch = normalizedSource.match(/T(\d{2}):(\d{2}):(\d{2})/);
+    if (hourMatch) {
+      const hour = Number(hourMatch[1]);
+      const minute = Number(hourMatch[2]);
+      const second = Number(hourMatch[3]);
+      const isMidnight = hour === 0 && minute === 0 && second === 0;
+      const sourceDate = normalizedSource.slice(0, 10);
+
+      if (isMidnight) {
+        // Midnight → dùng cùng ngày lúc 08:00
+        return buildIsoDateTime(
+          Number(sourceDate.slice(0, 4)),
+          Number(sourceDate.slice(5, 7)),
+          Number(sourceDate.slice(8, 10)),
+          SURCHARGE_APPLY_HOUR, 0, 0
+        );
+      }
+
+      if (hour >= SURCHARGE_APPLY_HOUR && hour < 17) {
+        // Giờ hành chính (08:00–16:59) → có hiệu lực ngay
+        return normalizedSource;
+      }
+
+      if (hour >= 17) {
+        // Ban đêm (17:00–23:59) → roll lên 08:00 ngày SAU
+        const nextDate = shiftIsoDateByDays(sourceDate, 1);
+        return buildIsoDateTime(
+          Number(nextDate.slice(0, 4)),
+          Number(nextDate.slice(5, 7)),
+          Number(nextDate.slice(8, 10)),
+          SURCHARGE_APPLY_HOUR, 0, 0
+        );
+      }
+
+      // Sáng sớm (01:00–07:59) → roll lên 08:00 CÙNG ngày
+      return buildIsoDateTime(
+        Number(sourceDate.slice(0, 4)),
+        Number(sourceDate.slice(5, 7)),
+        Number(sourceDate.slice(8, 10)),
+        SURCHARGE_APPLY_HOUR, 0, 0
+      );
+    }
   }
 
   if (normalizedDate) {
