@@ -7,6 +7,7 @@ import authRouter from "./routes/auth.js";
 import crudRouter from "./routes/crud.js";
 import syncRouter from "./routes/sync.js";
 import { cronSync } from "./scrapers/petrolimex.js";
+import { getVietnamDateTimeParts } from "./utils/vietnamTime.js";
 
 const app = express();
 app.use(cors());
@@ -23,20 +24,28 @@ app.use("/api/auth",  authRouter);
 app.use("/api",       crudRouter);
 app.use("/api",       syncRouter);
 
-// ─── Daily 6:00 AM Scheduler ─────────────────────────────────────────────────
+// ─── Daily 7:00 AM (Vietnam time) Scheduler ─────────────────────────────────
 function startDailyScheduler() {
-  const SYNC_HOUR = 6;
+  const SYNC_HOUR = 6;   // 6:00 sáng giờ Việt Nam
   const SYNC_MINUTE = 0;
 
   function scheduleNext() {
     const now = new Date();
-    const next = new Date(now);
-    next.setHours(SYNC_HOUR, SYNC_MINUTE, 0, 0);
-    if (next <= now) {
-      next.setDate(next.getDate() + 1);
+    const vn = getVietnamDateTimeParts(now);
+
+    // Build target 07:00:00 today in UTC+7
+    const pad = (n: number) => String(n).padStart(2, "0");
+    let target = new Date(
+      `${vn.year}-${pad(vn.month)}-${pad(vn.day)}T${pad(SYNC_HOUR)}:${pad(SYNC_MINUTE)}:00+07:00`
+    );
+
+    // If target is already past, schedule for tomorrow
+    if (target.getTime() <= now.getTime()) {
+      target = new Date(target.getTime() + 24 * 60 * 60 * 1000);
     }
-    const delay = next.getTime() - Date.now();
-    const nextStr = next.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
+
+    const delay = target.getTime() - now.getTime();
+    const nextStr = target.toLocaleString("vi-VN", { timeZone: "Asia/Ho_Chi_Minh" });
     console.log(`[Scheduler] ⏰ Đồng bộ giá tiếp theo lúc ${nextStr} (sau ${Math.round(delay / 60000)} phút)`);
 
     setTimeout(async () => {
