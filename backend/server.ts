@@ -6,6 +6,7 @@ import { PORT } from "./config.js";
 import authRouter from "./routes/auth.js";
 import crudRouter from "./routes/crud.js";
 import syncRouter from "./routes/sync.js";
+import publicRouter from "./routes/public.js";
 import { cronSync } from "./scrapers/petrolimex.js";
 import { getVietnamDateTimeParts } from "./utils/vietnamTime.js";
 
@@ -20,9 +21,10 @@ const quotationAppPath = path.join(FRONTEND_DIR, "public", "bao-gia");
 app.use("/bao-gia", express.static(quotationAppPath));
 
 // Mount routers
-app.use("/api/auth",  authRouter);
-app.use("/api",       crudRouter);
-app.use("/api",       syncRouter);
+app.use("/api/auth",   authRouter);
+app.use("/api/public", publicRouter);
+app.use("/api",        crudRouter);
+app.use("/api",        syncRouter);
 
 // ─── Daily 7:00 AM (Vietnam time) Scheduler ─────────────────────────────────
 function startDailyScheduler() {
