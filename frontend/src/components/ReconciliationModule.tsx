@@ -13,18 +13,33 @@ import {
   Filter,
   ChevronUp,
   ChevronDown,
-  Search
+  Search,
+  GitCompareArrows,
+  BarChart3,
+  Upload,
+  CheckCircle2,
+  PlusCircle,
+  Repeat2,
 } from 'lucide-react';
 import { motion } from 'motion/react';
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAppContext } from '../context/AppContext';
 import {
   buildManualReconciliationResult,
   buildProcessedRows,
   clearReconciliationCurrentSession,
+  compareTwoDayReconciliation,
+  ComparisonHistoryItem,
+  CrossDayComparedRow,
+  CrossDayComparisonResult,
+  deleteComparisonHistoryItem,
   deleteReconciliationImportHistory,
+  exportCrossDayComparisonToExcel,
   exportProcessedRowsToExcel,
   getFuelPriceForDate,
   ImportedOrderRow,
+  loadComparisonHistory,
+  loadComparisonSession,
   loadReconciliationActiveTab,
   loadReconciliationCurrentSession,
   loadReconciliationImportHistory,
@@ -33,6 +48,8 @@ import {
   ReconciliationImportHistoryItem,
   ReconciliationStatus,
   ReconciliationValidationSummary,
+  saveComparisonHistory,
+  saveComparisonSession,
   saveReconciliationActiveTab,
   saveReconciliationCurrentSession,
   saveReconciliationImportHistory,
@@ -45,7 +62,7 @@ import { ReconciliationLog } from '../types';
 import jsQR from 'jsqr';
 import Tesseract from 'tesseract.js';
 
-type ReconciliationTab = 'scan' | 'excel' | 'history';
+type ReconciliationTab = 'scan' | 'excel' | 'compare' | 'analysis' | 'history';
 
 const todayIso = () => getVietnamTodayIsoDate();
 const getAutoExecutionDate = (savedExecutionDate?: string) => {
@@ -91,6 +108,22 @@ export default function ReconciliationModule() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [containerSearch, setContainerSearch] = useState('');
 
+  // === Cross-day comparison state ===
+  const [compareFileARows, setCompareFileARows] = useState<ProcessedOrderRow[]>([]);
+  const [compareFileBRows, setCompareFileBRows] = useState<ProcessedOrderRow[]>([]);
+  const [compareFileAName, setCompareFileAName] = useState('');
+  const [compareFileBName, setCompareFileBName] = useState('');
+  const [compareDateA, setCompareDateA] = useState(todayIso());
+  const [compareDateB, setCompareDateB] = useState(todayIso());
+  const [isCompareDateAFocused, setIsCompareDateAFocused] = useState(false);
+  const [isCompareDateBFocused, setIsCompareDateBFocused] = useState(false);
+  const [comparisonResult, setComparisonResult] = useState<CrossDayComparisonResult | null>(null);
+  const [isComparing, setIsComparing] = useState(false);
+  const [compareViewSection, setCompareViewSection] = useState<'duplicate' | 'new' | 'completed'>('duplicate');
+  const [comparisonHistory, setComparisonHistory] = useState<ComparisonHistoryItem[]>([]);
+  const compareFileARef = useRef<HTMLInputElement>(null);
+  const compareFileBRef = useRef<HTMLInputElement>(null);
+
   const qrFileInputRef = useRef<HTMLInputElement>(null);
   const excelFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -119,6 +152,19 @@ export default function ReconciliationModule() {
     const savedTab = loadReconciliationActiveTab();
 
     setImportHistory(savedHistory);
+    setComparisonHistory(loadComparisonHistory());
+
+    // Restore comparison session
+    const savedComparison = loadComparisonSession();
+    if (savedComparison) {
+      setComparisonResult(savedComparison.result);
+      setCompareFileAName(savedComparison.fileAName);
+      setCompareFileBName(savedComparison.fileBName);
+      setCompareDateA(savedComparison.dateA);
+      setCompareDateB(savedComparison.dateB);
+      setCompareFileARows(savedComparison.result.fileA.totalRows > 0 ? [] : []);  // rows not stored, just metadata
+      setCompareFileBRows(savedComparison.result.fileB.totalRows > 0 ? [] : []);
+    }
 
     if (savedSession && savedSession.rows.length > 0) {
       const restoredExecutionDate = getAutoExecutionDate(savedSession.executionDate);
@@ -127,7 +173,7 @@ export default function ReconciliationModule() {
       setExcelSourceName(savedSession.sourceFilename);
       setExecutionDate(restoredExecutionDate);
       setValidationSummary(validateImportedOrders(savedSession.rows, prices, tiers, restoredExecutionDate));
-      setActiveTab(savedTab === 'history' || savedTab === 'excel' || savedTab === 'scan' ? savedTab : 'excel');
+      setActiveTab(savedTab === 'history' || savedTab === 'excel' || savedTab === 'scan' || savedTab === 'compare' || savedTab === 'analysis' ? savedTab : 'excel');
       saveReconciliationCurrentSession({
         sourceFilename: savedSession.sourceFilename,
         executionDate: restoredExecutionDate,
@@ -144,7 +190,7 @@ export default function ReconciliationModule() {
       setExcelSourceName(latestHistory.sourceFilename);
       setExecutionDate(restoredExecutionDate);
       setValidationSummary(validateImportedOrders(latestHistory.rows, prices, tiers, restoredExecutionDate));
-      setActiveTab(savedTab === 'history' || savedTab === 'excel' || savedTab === 'scan' ? savedTab : 'excel');
+      setActiveTab(savedTab === 'history' || savedTab === 'excel' || savedTab === 'scan' || savedTab === 'compare' || savedTab === 'analysis' ? savedTab : 'excel');
       saveReconciliationCurrentSession({
         sourceFilename: latestHistory.sourceFilename,
         executionDate: restoredExecutionDate,
@@ -153,7 +199,7 @@ export default function ReconciliationModule() {
       return;
     }
 
-    if (savedTab === 'history' || savedTab === 'excel' || savedTab === 'scan') {
+    if (savedTab === 'history' || savedTab === 'excel' || savedTab === 'scan' || savedTab === 'compare' || savedTab === 'analysis') {
       setActiveTab(savedTab);
     }
   }, []);
@@ -538,24 +584,38 @@ export default function ReconciliationModule() {
         </p>
       </div>
 
-      <div className="flex bg-slate-200/50 p-1.5 rounded-2xl max-w-2xl flex-wrap">
+      <div className="flex bg-slate-200/50 p-1.5 rounded-2xl max-w-4xl flex-wrap">
         <button
           onClick={() => setActiveTab('scan')}
-          className={`flex-1 min-w-[180px] py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'scan' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`flex-1 min-w-[140px] py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'scan' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
           <ClipboardCheck className="w-4 h-4" />
           Mới / Đối soát
         </button>
         <button
           onClick={() => setActiveTab('excel')}
-          className={`flex-1 min-w-[180px] py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'excel' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`flex-1 min-w-[140px] py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'excel' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
           <FileSpreadsheet className="w-4 h-4" />
           Import Excel
         </button>
         <button
+          onClick={() => setActiveTab('compare')}
+          className={`flex-1 min-w-[140px] py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'compare' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <GitCompareArrows className="w-4 h-4" />
+          So sánh 2 ngày
+        </button>
+        <button
+          onClick={() => setActiveTab('analysis')}
+          className={`flex-1 min-w-[140px] py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'analysis' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+        >
+          <BarChart3 className="w-4 h-4" />
+          Phân tích
+        </button>
+        <button
           onClick={() => setActiveTab('history')}
-          className={`flex-1 min-w-[180px] py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'history' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+          className={`flex-1 min-w-[140px] py-3 text-sm font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${activeTab === 'history' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
         >
           <History className="w-4 h-4" />
           Lịch sử Logs
@@ -1030,7 +1090,578 @@ export default function ReconciliationModule() {
         </motion.div>
       )}
 
+      {activeTab === 'compare' && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-6 lg:p-8">
+            <div className="mb-6">
+              <h2 className="text-lg font-bold text-slate-800">So sánh Đối Soát giữa 2 ngày</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Import 2 file đối soát từ 2 ngày khác nhau để phát hiện cont <strong>trùng lặp</strong> (tồn cả 2 ngày), cont <strong>mới phát sinh</strong>, và cont <strong>đã hoàn thành</strong>.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+              {/* File A - Old day */}
+              <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="bg-blue-100 text-blue-700 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">A — Ngày cũ</span>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Ngày thực hiện (A)</label>
+                  <input
+                    type={isCompareDateAFocused ? 'date' : 'text'}
+                    onFocus={() => setIsCompareDateAFocused(true)}
+                    onBlur={() => setIsCompareDateAFocused(false)}
+                    value={isCompareDateAFocused ? compareDateA : displayDate(compareDateA)}
+                    onChange={e => setCompareDateA(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 font-bold text-slate-700"
+                  />
+                </div>
+                <input type="file" ref={compareFileARef} accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const buffer = await file.arrayBuffer();
+                    const parsed = parseImportedOrders(buffer);
+                    const processed = buildProcessedRows(parsed, prices, tiers, compareDateA);
+                    setCompareFileARows(processed);
+                    setCompareFileAName(file.name);
+                  } catch (err) {
+                    alert(`Lỗi đọc file A: ${(err as Error).message}`);
+                  }
+                  e.target.value = '';
+                }} />
+                <button
+                  onClick={() => compareFileARef.current?.click()}
+                  className="w-full bg-blue-600 text-white px-4 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-blue-700 transition"
+                >
+                  <Upload className="w-4 h-4" />
+                  {compareFileAName ? `✓ ${compareFileAName}` : 'Chọn file ngày cũ (A)'}
+                </button>
+                {compareFileARows.length > 0 && (
+                  <p className="text-xs text-blue-600 font-bold">✓ {compareFileARows.length} dòng đã load</p>
+                )}
+              </div>
+
+              {/* File B - New day */}
+              <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="bg-emerald-100 text-emerald-700 text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest">B — Ngày mới</span>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Ngày thực hiện (B)</label>
+                  <input
+                    type={isCompareDateBFocused ? 'date' : 'text'}
+                    onFocus={() => setIsCompareDateBFocused(true)}
+                    onBlur={() => setIsCompareDateBFocused(false)}
+                    value={isCompareDateBFocused ? compareDateB : displayDate(compareDateB)}
+                    onChange={e => setCompareDateB(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 font-bold text-slate-700"
+                  />
+                </div>
+                <input type="file" ref={compareFileBRef} accept=".xlsx,.xls" className="hidden" onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  try {
+                    const buffer = await file.arrayBuffer();
+                    const parsed = parseImportedOrders(buffer);
+                    const processed = buildProcessedRows(parsed, prices, tiers, compareDateB);
+                    setCompareFileBRows(processed);
+                    setCompareFileBName(file.name);
+                  } catch (err) {
+                    alert(`Lỗi đọc file B: ${(err as Error).message}`);
+                  }
+                  e.target.value = '';
+                }} />
+                <button
+                  onClick={() => compareFileBRef.current?.click()}
+                  className="w-full bg-emerald-600 text-white px-4 py-3 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 hover:bg-emerald-700 transition"
+                >
+                  <Upload className="w-4 h-4" />
+                  {compareFileBName ? `✓ ${compareFileBName}` : 'Chọn file ngày mới (B)'}
+                </button>
+                {compareFileBRows.length > 0 && (
+                  <p className="text-xs text-emerald-600 font-bold">✓ {compareFileBRows.length} dòng đã load</p>
+                )}
+              </div>
+            </div>
+
+            {/* Compare button */}
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={() => {
+                  if (compareFileARows.length === 0 || compareFileBRows.length === 0) {
+                    alert('Vui lòng import đủ 2 file trước khi so sánh.');
+                    return;
+                  }
+                  setIsComparing(true);
+                  setTimeout(() => {
+                    const result = compareTwoDayReconciliation(
+                      compareFileARows, compareFileBRows,
+                      { name: compareFileAName, date: compareDateA },
+                      { name: compareFileBName, date: compareDateB }
+                    );
+                    setComparisonResult(result);
+                    setCompareViewSection('duplicate');
+                    setIsComparing(false);
+                    // Persist to localStorage
+                    const sessionData = {
+                      result,
+                      fileAName: compareFileAName,
+                      fileBName: compareFileBName,
+                      dateA: compareDateA,
+                      dateB: compareDateB,
+                    };
+                    saveComparisonSession(sessionData);
+                    saveComparisonHistory(sessionData);
+                    setComparisonHistory(loadComparisonHistory());
+                  }, 100);
+                }}
+                disabled={isComparing || compareFileARows.length === 0 || compareFileBRows.length === 0}
+                className={`flex-1 min-w-[200px] py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 transition shadow-lg ${
+                  isComparing || compareFileARows.length === 0 || compareFileBRows.length === 0
+                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-slate-100'
+                    : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200'
+                }`}
+              >
+                {isComparing ? <RefreshCcw className="w-5 h-5 animate-spin" /> : <GitCompareArrows className="w-5 h-5" />}
+                {isComparing ? 'Đang so sánh...' : 'So sánh 2 ngày'}
+              </button>
+              {comparisonResult && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const filename = await exportCrossDayComparisonToExcel(comparisonResult);
+                      alert(`Đã xuất file ${filename}.`);
+                    } catch (err) {
+                      alert(`Lỗi xuất Excel: ${(err as Error).message}`);
+                    }
+                  }}
+                  className="px-6 py-4 rounded-2xl text-sm font-bold bg-slate-800 text-white hover:bg-slate-900 flex items-center gap-2 transition"
+                >
+                  <Download className="w-4 h-4" />
+                  Xuất Excel so sánh
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Comparison Results */}
+          {comparisonResult && (
+            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+              {/* Summary cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">File A (cũ)</p>
+                  <p className="text-2xl font-black text-slate-800 mt-2">{comparisonResult.fileA.totalRows}</p>
+                  <p className="text-[10px] text-slate-400 mt-1">{displayDate(comparisonResult.fileA.date)}</p>
+                </div>
+                <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">File B (mới)</p>
+                  <p className="text-2xl font-black text-slate-800 mt-2">{comparisonResult.fileB.totalRows}</p>
+                  <p className="text-[10px] text-slate-400 mt-1">{displayDate(comparisonResult.fileB.date)}</p>
+                </div>
+                <button onClick={() => setCompareViewSection('duplicate')} className={`rounded-3xl p-5 text-left transition border ${compareViewSection === 'duplicate' ? 'bg-blue-100 border-blue-300 ring-2 ring-blue-400' : 'bg-blue-50 border-blue-100 hover:bg-blue-100'}`}>
+                  <p className="text-xs font-bold text-blue-500 uppercase tracking-widest flex items-center gap-1"><Repeat2 className="w-3.5 h-3.5" /> Trùng lặp</p>
+                  <p className="text-2xl font-black text-blue-700 mt-2">{comparisonResult.duplicateRows.length}</p>
+                </button>
+                <button onClick={() => setCompareViewSection('new')} className={`rounded-3xl p-5 text-left transition border ${compareViewSection === 'new' ? 'bg-emerald-100 border-emerald-300 ring-2 ring-emerald-400' : 'bg-emerald-50 border-emerald-100 hover:bg-emerald-100'}`}>
+                  <p className="text-xs font-bold text-emerald-500 uppercase tracking-widest flex items-center gap-1"><PlusCircle className="w-3.5 h-3.5" /> Mới phát sinh</p>
+                  <p className="text-2xl font-black text-emerald-700 mt-2">{comparisonResult.newRows.length}</p>
+                </button>
+                <button onClick={() => setCompareViewSection('completed')} className={`rounded-3xl p-5 text-left transition border ${compareViewSection === 'completed' ? 'bg-amber-100 border-amber-300 ring-2 ring-amber-400' : 'bg-amber-50 border-amber-100 hover:bg-amber-100'}`}>
+                  <p className="text-xs font-bold text-amber-500 uppercase tracking-widest flex items-center gap-1"><CheckCircle2 className="w-3.5 h-3.5" /> Đã hoàn thành</p>
+                  <p className="text-2xl font-black text-amber-700 mt-2">{comparisonResult.completedRows.length}</p>
+                </button>
+              </div>
+
+              {/* Active section table */}
+              {(() => {
+                const sectionConfig = {
+                  duplicate: { title: 'Container trùng lặp (tồn cả 2 ngày)', rows: comparisonResult.duplicateRows, color: 'blue' },
+                  new: { title: 'Container mới phát sinh (chỉ ở ngày mới)', rows: comparisonResult.newRows, color: 'emerald' },
+                  completed: { title: 'Container đã hoàn thành (chỉ ở ngày cũ)', rows: comparisonResult.completedRows, color: 'amber' },
+                };
+                const cfg = sectionConfig[compareViewSection];
+                const rows = cfg.rows;
+                return (
+                  <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-6 lg:p-8">
+                    <h3 className={`text-sm font-black uppercase tracking-widest mb-4 text-${cfg.color}-600`}>{cfg.title} — {rows.length} cont</h3>
+                    {rows.length === 0 ? (
+                      <div className="bg-slate-50 rounded-3xl p-8 border border-dashed border-slate-200 text-center text-slate-400">
+                        <p className="font-medium text-sm">Không có container trong danh mục này.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto border border-slate-200 rounded-3xl">
+                        <table className="w-full min-w-[900px] text-left border-collapse">
+                          <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                            <tr>
+                              <th className="px-4 py-3 border-b border-slate-200 text-center">STT</th>
+                              <th className="px-4 py-3 border-b border-slate-200">Container</th>
+                              <th className="px-4 py-3 border-b border-slate-200">Số lệnh</th>
+                              <th className="px-4 py-3 border-b border-slate-200">Loại</th>
+                              <th className="px-4 py-3 border-b border-slate-200">Ngày lệnh</th>
+                              {compareViewSection !== 'new' && (
+                                <>
+                                  <th className="px-4 py-3 border-b border-slate-200 text-right">Giá dầu (A)</th>
+                                  <th className="px-4 py-3 border-b border-slate-200 text-right">Phụ thu (A)</th>
+                                </>
+                              )}
+                              {compareViewSection !== 'completed' && (
+                                <>
+                                  <th className="px-4 py-3 border-b border-slate-200 text-right">Giá dầu (B)</th>
+                                  <th className="px-4 py-3 border-b border-slate-200 text-right">Phụ thu (B)</th>
+                                </>
+                              )}
+                              {compareViewSection === 'duplicate' && (
+                                <th className="px-4 py-3 border-b border-slate-200 text-right">Chênh lệch phụ thu</th>
+                              )}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {rows.map((row, index) => (
+                              <tr key={`${row.containerNumber}-${index}`} className="hover:bg-slate-50">
+                                <td className="px-4 py-3 border-b border-slate-100 text-center text-xs font-bold text-slate-500">{index + 1}</td>
+                                <td className="px-4 py-3 border-b border-slate-100">
+                                  <p className="text-xs font-bold text-slate-700">{row.containerNumber}</p>
+                                  <p className="text-[10px] text-slate-400">{row.note || '—'}</p>
+                                </td>
+                                <td className="px-4 py-3 border-b border-slate-100 text-xs font-bold text-slate-700">{row.orderNo}</td>
+                                <td className="px-4 py-3 border-b border-slate-100 text-xs font-bold text-slate-600">{row.containerType ?? '—'}</td>
+                                <td className="px-4 py-3 border-b border-slate-100 text-xs text-slate-600">{row.bookingDateDisplay}</td>
+                                {compareViewSection !== 'new' && (
+                                  <>
+                                    <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-slate-600">{row.oldFuelPrice?.toLocaleString('vi-VN') ?? '—'}</td>
+                                    <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-blue-600">{row.oldSurcharge?.toLocaleString('vi-VN') ?? '—'}</td>
+                                  </>
+                                )}
+                                {compareViewSection !== 'completed' && (
+                                  <>
+                                    <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-slate-600">{row.newFuelPrice?.toLocaleString('vi-VN') ?? '—'}</td>
+                                    <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-bold text-emerald-600">{row.newSurcharge?.toLocaleString('vi-VN') ?? '—'}</td>
+                                  </>
+                                )}
+                                {compareViewSection === 'duplicate' && (
+                                  <td className="px-4 py-3 border-b border-slate-100 text-xs text-right font-black">
+                                    <span className={
+                                      row.surchargeDelta === null ? 'text-slate-400' :
+                                      row.surchargeDelta > 0 ? 'text-rose-600' :
+                                      row.surchargeDelta < 0 ? 'text-emerald-600' :
+                                      'text-slate-500'
+                                    }>
+                                      {row.surchargeDelta === null ? '—' : `${row.surchargeDelta > 0 ? '+' : ''}${row.surchargeDelta.toLocaleString('vi-VN')}`}
+                                    </span>
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </motion.div>
+          )}
+        </motion.div>
+      )}
+
+      {activeTab === 'analysis' && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+          {/* Analysis based on comparison result */}
+          {comparisonResult ? (() => {
+            const totalCompared = comparisonResult.duplicateRows.length + comparisonResult.newRows.length + comparisonResult.completedRows.length;
+            const pieData = [
+              { name: 'Trùng lặp', value: comparisonResult.duplicateRows.length, color: '#3B82F6' },
+              { name: 'Mới phát sinh', value: comparisonResult.newRows.length, color: '#10B981' },
+              { name: 'Đã hoàn thành', value: comparisonResult.completedRows.length, color: '#F59E0B' },
+            ].filter(d => d.value > 0);
+
+            // Surcharge delta distribution for duplicates
+            const deltaDistribution: Record<string, number> = { 'Tăng': 0, 'Giảm': 0, 'Giữ nguyên': 0, 'Thiếu DL': 0 };
+            comparisonResult.duplicateRows.forEach(row => {
+              if (row.surchargeDelta === null) deltaDistribution['Thiếu DL']++;
+              else if (row.surchargeDelta > 0) deltaDistribution['Tăng']++;
+              else if (row.surchargeDelta < 0) deltaDistribution['Giảm']++;
+              else deltaDistribution['Giữ nguyên']++;
+            });
+            const deltaBarData = [
+              { name: 'Tăng', value: deltaDistribution['Tăng'], fill: '#F43F5E' },
+              { name: 'Giảm', value: deltaDistribution['Giảm'], fill: '#10B981' },
+              { name: 'Giữ nguyên', value: deltaDistribution['Giữ nguyên'], fill: '#94A3B8' },
+              { name: 'Thiếu DL', value: deltaDistribution['Thiếu DL'], fill: '#F59E0B' },
+            ].filter(d => d.value > 0);
+
+            // Container type distribution across all compared
+            const allRows = [...comparisonResult.duplicateRows, ...comparisonResult.newRows, ...comparisonResult.completedRows];
+            const typeCount: Record<string, number> = {};
+            allRows.forEach(row => {
+              const t = row.containerType ?? 'Không rõ';
+              typeCount[t] = (typeCount[t] || 0) + 1;
+            });
+            const typeColors = ['#6366F1', '#8B5CF6', '#EC4899', '#F97316', '#14B8A6'];
+            const typeData = Object.entries(typeCount).map(([name, value], i) => ({
+              name, value, color: typeColors[i % typeColors.length],
+            }));
+
+            // Total surcharge impact
+            const totalSurchargeDelta = comparisonResult.duplicateRows.reduce((sum, r) => sum + (r.surchargeDelta ?? 0), 0);
+            const totalDeltaVat = Math.round(totalSurchargeDelta * 1.08);
+
+            return (
+              <>
+                {/* Summary metrics */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tổng cont so sánh</p>
+                    <p className="text-3xl font-black text-slate-800 mt-3">{totalCompared.toLocaleString('vi-VN')}</p>
+                  </div>
+                  <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tỷ lệ tồn</p>
+                    <p className="text-3xl font-black text-blue-600 mt-3">
+                      {totalCompared > 0 ? ((comparisonResult.duplicateRows.length / totalCompared) * 100).toFixed(1) : '0'}%
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1">{comparisonResult.duplicateRows.length} / {totalCompared} cont</p>
+                  </div>
+                  <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tổng Chênh lệch phụ thu</p>
+                    <p className={`text-3xl font-black mt-3 ${totalSurchargeDelta > 0 ? 'text-rose-600' : totalSurchargeDelta < 0 ? 'text-emerald-600' : 'text-slate-600'}`}>
+                      {totalSurchargeDelta > 0 ? '+' : ''}{totalSurchargeDelta.toLocaleString('vi-VN')}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1">Chênh lệch tổng (cont trùng lặp)</p>
+                  </div>
+                  <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Chênh lệch có VAT (8%)</p>
+                    <p className={`text-3xl font-black mt-3 ${totalDeltaVat > 0 ? 'text-rose-600' : totalDeltaVat < 0 ? 'text-emerald-600' : 'text-slate-600'}`}>
+                      {totalDeltaVat > 0 ? '+' : ''}{totalDeltaVat.toLocaleString('vi-VN')}
+                    </p>
+                    <p className="text-[10px] text-slate-400 mt-1">Tổng tiền VAT chênh lệch</p>
+                  </div>
+                </div>
+
+                {/* Charts */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Pie: Distribution */}
+                  <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6">
+                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Phân bổ Container</h3>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <PieChart>
+                        <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={50} paddingAngle={4} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                          {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => value.toLocaleString('vi-VN')} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex justify-center gap-4 mt-2">
+                      {pieData.map(d => (
+                        <div key={d.name} className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
+                          {d.name}: {d.value}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Bar: Surcharge delta (duplicates) */}
+                  <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6">
+                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Biến động phụ thu (cont trùng lặp)</h3>
+                    {comparisonResult.duplicateRows.length > 0 ? (
+                      <ResponsiveContainer width="100%" height={280}>
+                        <BarChart data={deltaBarData} layout="vertical" margin={{ left: 20 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                          <XAxis type="number" tick={{ fontSize: 11 }} />
+                          <YAxis type="category" dataKey="name" tick={{ fontSize: 12, fontWeight: 700 }} width={80} />
+                          <Tooltip formatter={(value: number) => value.toLocaleString('vi-VN') + ' cont'} />
+                          <Bar dataKey="value" radius={[0, 8, 8, 0]} barSize={28}>
+                            {deltaBarData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[280px] text-slate-400 text-sm font-medium">
+                        Không có cont trùng lặp để phân tích
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Pie: Container type */}
+                  <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6">
+                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Phân bổ theo loại Cont</h3>
+                    <ResponsiveContainer width="100%" height={280}>
+                      <PieChart>
+                        <Pie data={typeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={50} paddingAngle={4} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                          {typeData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                        </Pie>
+                        <Tooltip formatter={(value: number) => value.toLocaleString('vi-VN')} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="flex flex-wrap justify-center gap-3 mt-2">
+                      {typeData.map(d => (
+                        <div key={d.name} className="flex items-center gap-1.5 text-xs font-bold text-slate-600">
+                          <span className="w-3 h-3 rounded-full" style={{ backgroundColor: d.color }} />
+                          {d.name}: {d.value}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Summary: File comparison overview */}
+                  <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6">
+                    <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Tổng quan so sánh</h3>
+                    <div className="space-y-4">
+                      <div className="bg-slate-50 rounded-2xl p-4">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">File ngày cũ (A)</p>
+                        <p className="text-sm font-bold text-slate-700 mt-1">{comparisonResult.fileA.name}</p>
+                        <p className="text-xs text-slate-500">{displayDate(comparisonResult.fileA.date)} — {comparisonResult.fileA.totalRows} cont</p>
+                      </div>
+                      <div className="flex items-center justify-center">
+                        <ArrowRight className="w-5 h-5 text-slate-300" />
+                      </div>
+                      <div className="bg-slate-50 rounded-2xl p-4">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">File ngày mới (B)</p>
+                        <p className="text-sm font-bold text-slate-700 mt-1">{comparisonResult.fileB.name}</p>
+                        <p className="text-xs text-slate-500">{displayDate(comparisonResult.fileB.date)} — {comparisonResult.fileB.totalRows} cont</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 mt-4">
+                        <div className="bg-blue-50 rounded-2xl p-3 text-center">
+                          <p className="text-lg font-black text-blue-700">{comparisonResult.duplicateRows.length}</p>
+                          <p className="text-[10px] font-bold text-blue-500 uppercase">Trùng</p>
+                        </div>
+                        <div className="bg-emerald-50 rounded-2xl p-3 text-center">
+                          <p className="text-lg font-black text-emerald-700">{comparisonResult.newRows.length}</p>
+                          <p className="text-[10px] font-bold text-emerald-500 uppercase">Mới</p>
+                        </div>
+                        <div className="bg-amber-50 rounded-2xl p-3 text-center">
+                          <p className="text-lg font-black text-amber-700">{comparisonResult.completedRows.length}</p>
+                          <p className="text-[10px] font-bold text-amber-500 uppercase">Hoàn thành</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            );
+          })() : (
+            /* Fallback: analysis from current processedOrders */
+            processedOrders.length > 0 ? (() => {
+              const summary = summarizeProcessedRows(processedOrders);
+              const statusPieData = [
+                { name: 'Tăng', value: summary.increase, color: '#F43F5E' },
+                { name: 'Giảm', value: summary.decrease, color: '#10B981' },
+                { name: 'Giữ nguyên', value: summary.same, color: '#94A3B8' },
+                { name: 'Thiếu DL', value: summary.missing, color: '#F59E0B' },
+              ].filter(d => d.value > 0);
+
+              const typeCount: Record<string, number> = {};
+              processedOrders.forEach(r => {
+                const t = r.containerType ?? 'Không rõ';
+                typeCount[t] = (typeCount[t] || 0) + 1;
+              });
+              const typeColors = ['#6366F1', '#8B5CF6', '#EC4899', '#F97316', '#14B8A6'];
+              const typeData = Object.entries(typeCount).map(([name, value], i) => ({
+                name, value, color: typeColors[i % typeColors.length],
+              }));
+
+              const totalDelta = processedOrders.reduce((sum, r) => sum + (r.delta ?? 0), 0);
+              const totalDeltaVat = Math.round(totalDelta * 1.08);
+
+              // Date-group bar chart
+              const dateGroupData = uniqueBookingDates.map(d => {
+                const group = processedOrders.filter(r => r.bookingDate === d);
+                return {
+                  name: displayDate(d),
+                  increase: group.filter(r => r.status === 'increase').length,
+                  decrease: group.filter(r => r.status === 'decrease').length,
+                  same: group.filter(r => r.status === 'same').length,
+                };
+              });
+
+              return (
+                <>
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tổng dòng</p>
+                      <p className="text-3xl font-black text-slate-800 mt-3">{summary.total.toLocaleString('vi-VN')}</p>
+                    </div>
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                      <p className="text-xs font-bold text-rose-400 uppercase tracking-widest">Tăng</p>
+                      <p className="text-3xl font-black text-rose-600 mt-3">{summary.increase}</p>
+                    </div>
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tổng chênh lệch phụ thu</p>
+                      <p className={`text-3xl font-black mt-3 ${totalDelta > 0 ? 'text-rose-600' : totalDelta < 0 ? 'text-emerald-600' : 'text-slate-600'}`}>
+                        {totalDelta > 0 ? '+' : ''}{totalDelta.toLocaleString('vi-VN')}
+                      </p>
+                    </div>
+                    <div className="bg-white rounded-3xl shadow-sm border border-slate-100 p-6">
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Chênh lệch có VAT (8%)</p>
+                      <p className={`text-3xl font-black mt-3 ${totalDeltaVat > 0 ? 'text-rose-600' : totalDeltaVat < 0 ? 'text-emerald-600' : 'text-slate-600'}`}>
+                        {totalDeltaVat > 0 ? '+' : ''}{totalDeltaVat.toLocaleString('vi-VN')}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6">
+                      <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Phân bổ trạng thái</h3>
+                      <ResponsiveContainer width="100%" height={280}>
+                        <PieChart>
+                          <Pie data={statusPieData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={50} paddingAngle={4} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                            {statusPieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => value.toLocaleString('vi-VN')} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6">
+                      <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Phân bổ theo loại Cont</h3>
+                      <ResponsiveContainer width="100%" height={280}>
+                        <PieChart>
+                          <Pie data={typeData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={100} innerRadius={50} paddingAngle={4} label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}>
+                            {typeData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                          </Pie>
+                          <Tooltip formatter={(value: number) => value.toLocaleString('vi-VN')} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    {dateGroupData.length > 1 && (
+                      <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6 lg:col-span-2">
+                        <h3 className="text-sm font-black text-slate-700 uppercase tracking-widest mb-4">Trạng thái theo Ngày lệnh</h3>
+                        <ResponsiveContainer width="100%" height={300}>
+                          <BarChart data={dateGroupData} margin={{ left: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#E2E8F0" />
+                            <XAxis dataKey="name" tick={{ fontSize: 11 }} />
+                            <YAxis tick={{ fontSize: 11 }} />
+                            <Tooltip />
+                            <Legend />
+                            <Bar dataKey="increase" name="Tăng" fill="#F43F5E" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="decrease" name="Giảm" fill="#10B981" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey="same" name="Giữ nguyên" fill="#94A3B8" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </div>
+                </>
+              );
+            })() : (
+              <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 p-12 text-center">
+                <BarChart3 className="w-16 h-16 mx-auto mb-4 text-slate-300" />
+                <h3 className="text-lg font-bold text-slate-700 mb-2">Chưa có dữ liệu phân tích</h3>
+                <p className="text-sm text-slate-500 max-w-md mx-auto">
+                  Hãy <strong>Import Excel</strong> hoặc <strong>So sánh 2 ngày</strong> trước để có dữ liệu. Tab Phân tích sẽ tự động hiển thị biểu đồ từ dữ liệu hiện có.
+                </p>
+              </div>
+            )
+          )}
+        </motion.div>
+      )}
+
       {activeTab === 'history' && (
+
         <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} className="space-y-6">
           <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden">
             <div className="p-6 border-b border-slate-50 flex justify-between items-center">
@@ -1082,6 +1713,98 @@ export default function ReconciliationModule() {
                     {importHistory.length === 0 && (
                       <tr>
                         <td colSpan={7} className="text-center py-8 text-slate-400 text-sm">Chưa có lịch sử import Excel.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 overflow-hidden mt-6">
+            <div className="p-6 border-b border-slate-50 flex justify-between items-center">
+              <h2 className="font-bold text-slate-800">Lịch sử So sánh 2 ngày</h2>
+            </div>
+            <div className="overflow-x-auto pb-4">
+              <div className="min-w-[900px] px-4">
+                <table className="w-full text-left border-collapse border border-slate-200">
+                  <thead className="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                    <tr>
+                      <th className="px-4 py-3 border border-slate-200 text-center w-12">STT</th>
+                      <th className="px-4 py-3 border border-slate-200">Thông tin File cũ (A)</th>
+                      <th className="px-4 py-3 border border-slate-200">Thông tin File mới (B)</th>
+                      <th className="px-4 py-3 border border-slate-200 text-center w-32">Ngày lưu</th>
+                      <th className="px-4 py-3 border border-slate-200 text-center w-52">Kết quả</th>
+                      <th className="px-4 py-3 border border-slate-200 text-center w-32">Tác vụ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {comparisonHistory.map((item, index) => (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 border border-slate-200 text-center text-xs font-bold text-slate-500">{index + 1}</td>
+                        <td className="px-4 py-3 border border-slate-200">
+                          <p className="font-bold text-slate-700 text-xs">{item.fileAName}</p>
+                          <p className="text-[10px] text-slate-400">Ngày TT: {item.dateA} — {item.result?.fileA?.totalRows ?? 0} cont</p>
+                        </td>
+                        <td className="px-4 py-3 border border-slate-200">
+                          <p className="font-bold text-slate-700 text-xs">{item.fileBName}</p>
+                          <p className="text-[10px] text-slate-400">Ngày TT: {item.dateB} — {item.result?.fileB?.totalRows ?? 0} cont</p>
+                        </td>
+                        <td className="px-4 py-3 border border-slate-200 text-center text-[10px] font-medium text-slate-600">
+                          {new Date(item.savedAt).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                        </td>
+                        <td className="px-4 py-3 border border-slate-200">
+                          <div className="flex justify-center gap-1.5">
+                            <span className="bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded text-[10px] font-bold border border-indigo-100">
+                              Trùng {item.result?.duplicateRows?.length ?? 0}
+                            </span>
+                            <span className="bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded text-[10px] font-bold border border-emerald-100">
+                              Mới {item.result?.newRows?.length ?? 0}
+                            </span>
+                            <span className="bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded text-[10px] font-bold border border-amber-100">
+                              Xong {item.result?.completedRows?.length ?? 0}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 border border-slate-200 text-center">
+                          <div className="flex justify-center gap-2">
+                            <button
+                              onClick={() => {
+                                setComparisonResult(item.result);
+                                setCompareFileAName(item.fileAName);
+                                setCompareFileBName(item.fileBName);
+                                setCompareDateA(item.dateA);
+                                setCompareDateB(item.dateB);
+                                setCompareFileARows(item.result.fileA.totalRows > 0 ? [] : []);
+                                setCompareFileBRows(item.result.fileB.totalRows > 0 ? [] : []);
+                                setCompareViewSection('duplicate');
+                                saveComparisonSession(item);
+                                setActiveTab('compare');
+                              }}
+                              className="bg-indigo-50 text-indigo-600 px-3 py-1.5 rounded-xl text-[11px] font-bold hover:bg-indigo-100 transition"
+                            >
+                              Mở lại
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (window.confirm('Bạn có chắc muốn xóa lịch sử so sánh này?')) {
+                                  deleteComparisonHistoryItem(item.id);
+                                  setComparisonHistory(loadComparisonHistory());
+                                }
+                              }}
+                              className="bg-rose-50 text-rose-600 px-3 py-1.5 rounded-xl text-[11px] font-bold hover:bg-rose-100 transition"
+                            >
+                              Xóa
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {comparisonHistory.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="text-center py-8 text-slate-400 text-sm">
+                          Chưa có lịch sử so sánh 2 ngày.
+                        </td>
                       </tr>
                     )}
                   </tbody>

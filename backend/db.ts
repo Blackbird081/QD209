@@ -40,5 +40,5 @@ export {
   TABLE_GETTERS,
   TABLE_SETTERS,
   pool,
-//} from "./db-memory.js";
-} from "./db-postgres.js";  // ← BỎ COMMENT DÒNG NÀY VÀ COMMENT DÒNG TRÊN ĐỂ DÙNG POSTGRESQL
+} from "./db-memory.js";
+//} from "./db-postgres.js";  // ← BỎ COMMENT DÒNG NÀY VÀ COMMENT DÒNG TRÊN ĐỂ DÙNG POSTGRESQL

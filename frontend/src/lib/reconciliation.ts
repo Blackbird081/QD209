@@ -15,6 +15,8 @@ const REQUIRED_HEADERS = ['Số lệnh', 'Số PIN', 'Ngày lệnh', 'Số conta
 const IMPORT_HISTORY_STORAGE_KEY = 'logipro_reconciliation_import_history';
 const CURRENT_SESSION_STORAGE_KEY = 'logipro_reconciliation_current_session';
 const ACTIVE_TAB_STORAGE_KEY = 'logipro_reconciliation_active_tab';
+const COMPARISON_SESSION_STORAGE_KEY = 'logipro_reconciliation_comparison_session';
+const COMPARISON_HISTORY_STORAGE_KEY = 'logipro_reconciliation_comparison_history';
 
 export type SupportedContainerType = '20F' | '40F' | '20E' | '40E';
 export type ReconciliationStatus = 'increase' | 'decrease' | 'same' | 'missing';
@@ -526,6 +528,80 @@ export const saveReconciliationActiveTab = (tab: string): void => {
   window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, tab);
 };
 
+// ─── Cross-day comparison session persistence ────────────────────────────────
+
+export interface ComparisonSessionData {
+  result: CrossDayComparisonResult;
+  fileAName: string;
+  fileBName: string;
+  dateA: string;
+  dateB: string;
+}
+
+export const saveComparisonSession = (session: ComparisonSessionData): void => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.setItem(COMPARISON_SESSION_STORAGE_KEY, JSON.stringify(session));
+};
+
+export const loadComparisonSession = (): ComparisonSessionData | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const saved = window.localStorage.getItem(COMPARISON_SESSION_STORAGE_KEY);
+    if (!saved) return null;
+    const parsed = JSON.parse(saved) as ComparisonSessionData;
+    if (!parsed || !parsed.result) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+};
+
+export const clearComparisonSession = (): void => {
+  if (typeof window === 'undefined') return;
+  window.localStorage.removeItem(COMPARISON_SESSION_STORAGE_KEY);
+};
+
+export interface ComparisonHistoryItem {
+  id: string;
+  result: CrossDayComparisonResult;
+  fileAName: string;
+  fileBName: string;
+  dateA: string;
+  dateB: string;
+  savedAt: string;
+}
+
+export const saveComparisonHistory = (item: Omit<ComparisonHistoryItem, 'id' | 'savedAt'>): void => {
+  if (typeof window === 'undefined') return;
+  const history = loadComparisonHistory();
+  const newItem: ComparisonHistoryItem = {
+    ...item,
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+    savedAt: new Date().toISOString(),
+  };
+  const updatedHistory = [newItem, ...history].slice(0, 50); // Keep last 50
+  window.localStorage.setItem(COMPARISON_HISTORY_STORAGE_KEY, JSON.stringify(updatedHistory));
+};
+
+export const loadComparisonHistory = (): ComparisonHistoryItem[] => {
+  if (typeof window === 'undefined') return [];
+  try {
+    const saved = window.localStorage.getItem(COMPARISON_HISTORY_STORAGE_KEY);
+    if (!saved) return [];
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+export const deleteComparisonHistoryItem = (id: string): void => {
+  if (typeof window === 'undefined') return;
+  const history = loadComparisonHistory();
+  const updated = history.filter(item => item.id !== id);
+  window.localStorage.setItem(COMPARISON_HISTORY_STORAGE_KEY, JSON.stringify(updated));
+};
+
 export const buildManualReconciliationResult = ({
   bookingDate,
   containerId,
@@ -768,6 +844,371 @@ export const exportProcessedRowsToExcel = async (
           }
         }
       ]
+    });
+    const writable = await handle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return filename;
+  }
+
+  downloadBlob(blob, filename);
+  return filename;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CROSS-DAY COMPARISON (So sánh đối soát giữa 2 ngày)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+export type ComparisonType = 'duplicate' | 'new' | 'completed';
+
+export interface CrossDayComparedRow {
+  containerNumber: string;
+  orderNo: string;
+  pin: string;
+  bookingDate: string;
+  bookingDateDisplay: string;
+  isoCode: string;
+  fullEmpty: string;
+  containerType?: SupportedContainerType;
+  note: string;
+  // Old day (file A)
+  oldExecutionDate: string;
+  oldFuelPrice: number | null;
+  oldSurcharge: number | null;
+  oldDelta: number | null;
+  oldAdjustmentLabel: string;
+  // New day (file B)
+  newExecutionDate: string;
+  newFuelPrice: number | null;
+  newSurcharge: number | null;
+  newDelta: number | null;
+  newAdjustmentLabel: string;
+  // Cross-day surcharge difference
+  surchargeDelta: number | null;
+  // Classification
+  comparisonType: ComparisonType;
+}
+
+export interface CrossDayComparisonResult {
+  fileA: { name: string; date: string; totalRows: number };
+  fileB: { name: string; date: string; totalRows: number };
+  duplicateRows: CrossDayComparedRow[];
+  newRows: CrossDayComparedRow[];
+  completedRows: CrossDayComparedRow[];
+  createdAt: string;
+}
+
+export const compareTwoDayReconciliation = (
+  rowsA: ProcessedOrderRow[],
+  rowsB: ProcessedOrderRow[],
+  fileAMeta: { name: string; date: string },
+  fileBMeta: { name: string; date: string }
+): CrossDayComparisonResult => {
+  const mapA = new Map<string, ProcessedOrderRow>();
+  rowsA.forEach(row => {
+    if (row.containerNumber) mapA.set(row.containerNumber, row);
+  });
+
+  const mapB = new Map<string, ProcessedOrderRow>();
+  rowsB.forEach(row => {
+    if (row.containerNumber) mapB.set(row.containerNumber, row);
+  });
+
+  const duplicateRows: CrossDayComparedRow[] = [];
+  const newRows: CrossDayComparedRow[] = [];
+  const completedRows: CrossDayComparedRow[] = [];
+
+  // Find duplicates and new in B
+  mapB.forEach((rowB, containerNumber) => {
+    const rowA = mapA.get(containerNumber);
+    if (rowA) {
+      // Duplicate: exists in both
+      const surchargeDelta =
+        rowB.surchargeAtExecution !== null && rowA.surchargeAtExecution !== null
+          ? rowB.surchargeAtExecution - rowA.surchargeAtExecution
+          : null;
+      duplicateRows.push({
+        containerNumber,
+        orderNo: rowB.orderNo,
+        pin: rowB.pin,
+        bookingDate: rowB.bookingDate,
+        bookingDateDisplay: rowB.bookingDateDisplay,
+        isoCode: rowB.isoCode,
+        fullEmpty: rowB.fullEmpty,
+        containerType: rowB.containerType,
+        note: rowB.note,
+        oldExecutionDate: fileAMeta.date,
+        oldFuelPrice: rowA.fuelPriceAtExecution,
+        oldSurcharge: rowA.surchargeAtExecution,
+        oldDelta: rowA.delta,
+        oldAdjustmentLabel: rowA.adjustmentLabel,
+        newExecutionDate: fileBMeta.date,
+        newFuelPrice: rowB.fuelPriceAtExecution,
+        newSurcharge: rowB.surchargeAtExecution,
+        newDelta: rowB.delta,
+        newAdjustmentLabel: rowB.adjustmentLabel,
+        surchargeDelta,
+        comparisonType: 'duplicate',
+      });
+    } else {
+      // New: only in B
+      newRows.push({
+        containerNumber,
+        orderNo: rowB.orderNo,
+        pin: rowB.pin,
+        bookingDate: rowB.bookingDate,
+        bookingDateDisplay: rowB.bookingDateDisplay,
+        isoCode: rowB.isoCode,
+        fullEmpty: rowB.fullEmpty,
+        containerType: rowB.containerType,
+        note: rowB.note,
+        oldExecutionDate: '',
+        oldFuelPrice: null,
+        oldSurcharge: null,
+        oldDelta: null,
+        oldAdjustmentLabel: '',
+        newExecutionDate: fileBMeta.date,
+        newFuelPrice: rowB.fuelPriceAtExecution,
+        newSurcharge: rowB.surchargeAtExecution,
+        newDelta: rowB.delta,
+        newAdjustmentLabel: rowB.adjustmentLabel,
+        surchargeDelta: null,
+        comparisonType: 'new',
+      });
+    }
+  });
+
+  // Find completed: only in A
+  mapA.forEach((rowA, containerNumber) => {
+    if (!mapB.has(containerNumber)) {
+      completedRows.push({
+        containerNumber,
+        orderNo: rowA.orderNo,
+        pin: rowA.pin,
+        bookingDate: rowA.bookingDate,
+        bookingDateDisplay: rowA.bookingDateDisplay,
+        isoCode: rowA.isoCode,
+        fullEmpty: rowA.fullEmpty,
+        containerType: rowA.containerType,
+        note: rowA.note,
+        oldExecutionDate: fileAMeta.date,
+        oldFuelPrice: rowA.fuelPriceAtExecution,
+        oldSurcharge: rowA.surchargeAtExecution,
+        oldDelta: rowA.delta,
+        oldAdjustmentLabel: rowA.adjustmentLabel,
+        newExecutionDate: '',
+        newFuelPrice: null,
+        newSurcharge: null,
+        newDelta: null,
+        newAdjustmentLabel: '',
+        surchargeDelta: null,
+        comparisonType: 'completed',
+      });
+    }
+  });
+
+  return {
+    fileA: { name: fileAMeta.name, date: fileAMeta.date, totalRows: rowsA.length },
+    fileB: { name: fileBMeta.name, date: fileBMeta.date, totalRows: rowsB.length },
+    duplicateRows,
+    newRows,
+    completedRows,
+    createdAt: new Date().toLocaleString('vi-VN', {
+      timeZone: 'Asia/Ho_Chi_Minh',
+      hour: '2-digit',
+      minute: '2-digit',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }),
+  };
+};
+
+export const exportCrossDayComparisonToExcel = async (
+  result: CrossDayComparisonResult
+) => {
+  const ExcelJS = await import('exceljs');
+  const workbook = new ExcelJS.Workbook();
+
+  const headerFill = {
+    type: 'pattern' as const,
+    pattern: 'solid' as const,
+    fgColor: { argb: '4F46E5' },
+  };
+
+  const sectionFills: Record<ComparisonType, typeof headerFill> = {
+    duplicate: { type: 'pattern', pattern: 'solid', fgColor: { argb: '3B82F6' } },
+    new: { type: 'pattern', pattern: 'solid', fgColor: { argb: '10B981' } },
+    completed: { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F59E0B' } },
+  };
+
+  // === Sheet 1: Summary ===
+  const summarySheet = workbook.addWorksheet('Tong hop');
+  summarySheet.columns = [
+    { header: 'Mục', key: 'label', width: 36 },
+    { header: 'Giá trị', key: 'value', width: 50 },
+  ];
+  summarySheet.addRows([
+    { label: 'File ngày cũ (A)', value: `${result.fileA.name} — ${formatIsoDateToVi(result.fileA.date)}` },
+    { label: 'File ngày mới (B)', value: `${result.fileB.name} — ${formatIsoDateToVi(result.fileB.date)}` },
+    { label: 'Tổng cont file A', value: result.fileA.totalRows },
+    { label: 'Tổng cont file B', value: result.fileB.totalRows },
+    { label: '', value: '' },
+    { label: 'Cont trùng lặp (tồn cả 2 ngày)', value: result.duplicateRows.length },
+    { label: 'Cont mới phát sinh (chỉ ở ngày mới)', value: result.newRows.length },
+    { label: 'Cont đã hoàn thành (chỉ ở ngày cũ)', value: result.completedRows.length },
+    { label: '', value: '' },
+    { label: 'Thời gian so sánh', value: result.createdAt },
+  ]);
+  summarySheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  summarySheet.getRow(1).fill = headerFill;
+
+  // Helper to build a comparison sheet
+  const buildComparisonSheet = (
+    sheetName: string,
+    rows: CrossDayComparedRow[],
+    sectionType: ComparisonType
+  ) => {
+    const sheet = workbook.addWorksheet(sheetName);
+    const isComparable = sectionType === 'duplicate';
+
+    const columns = [
+      { header: 'STT', key: 'stt', width: 8 },
+      { header: 'Số container', key: 'containerNumber', width: 18 },
+      { header: 'Số lệnh', key: 'orderNo', width: 16 },
+      { header: 'Số PIN', key: 'pin', width: 22 },
+      { header: 'Ngày lệnh', key: 'bookingDateDisplay', width: 16 },
+      { header: 'Loại cont', key: 'containerType', width: 10 },
+      { header: 'KC ISO', key: 'isoCode', width: 10 },
+      { header: 'F/E', key: 'fullEmpty', width: 8 },
+      { header: 'Ghi chú', key: 'note', width: 22 },
+    ];
+
+    if (sectionType === 'duplicate' || sectionType === 'completed') {
+      columns.push(
+        { header: `Giá dầu ngày cũ`, key: 'oldFuelPrice', width: 18 },
+        { header: `Phụ thu ngày cũ`, key: 'oldSurcharge', width: 18 },
+      );
+    }
+    if (sectionType === 'duplicate' || sectionType === 'new') {
+      columns.push(
+        { header: `Giá dầu ngày mới`, key: 'newFuelPrice', width: 18 },
+        { header: `Phụ thu ngày mới`, key: 'newSurcharge', width: 18 },
+      );
+    }
+    if (isComparable) {
+      columns.push(
+        { header: 'Chênh lệch phụ thu', key: 'surchargeDelta', width: 20 },
+        { header: 'Phụ thu CL có VAT', key: 'surchargeDeltaVat', width: 20 },
+      );
+    }
+
+    sheet.columns = columns;
+
+    rows.forEach((row, idx) => {
+      // Build array in column order to avoid ExcelJS out-of-bounds with object keys
+      const values = columns.map(col => {
+        if (col.key === 'stt') return idx + 1;
+        if (col.key === 'containerType') return row.containerType ?? 'Không rõ';
+        if (col.key === 'surchargeDeltaVat') return row.surchargeDelta !== null ? Math.round(row.surchargeDelta * 1.08) : null;
+        return (row as unknown as Record<string, unknown>)[col.key] ?? null;
+      });
+      sheet.addRow(values);
+    });
+
+    // Style header
+    sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    sheet.getRow(1).fill = sectionFills[sectionType];
+    sheet.getRow(1).alignment = { horizontal: 'center', vertical: 'middle' };
+    sheet.getRow(1).eachCell(cell => {
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'C7D2FE' } },
+        left: { style: 'thin', color: { argb: 'C7D2FE' } },
+        bottom: { style: 'thin', color: { argb: 'C7D2FE' } },
+        right: { style: 'thin', color: { argb: 'C7D2FE' } },
+      };
+    });
+
+    // Style data rows
+    const colKeyToIndex = new Map<string, number>();
+    columns.forEach((col, i) => colKeyToIndex.set(col.key, i + 1)); // ExcelJS columns are 1-indexed
+
+    const currencyKeys = ['oldFuelPrice', 'oldSurcharge', 'newFuelPrice', 'newSurcharge', 'surchargeDelta', 'surchargeDeltaVat'];
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      row.eachCell(cell => {
+        cell.alignment = { vertical: 'middle' };
+        cell.border = {
+          top: { style: 'thin', color: { argb: 'E2E8F0' } },
+          left: { style: 'thin', color: { argb: 'E2E8F0' } },
+          bottom: { style: 'thin', color: { argb: 'E2E8F0' } },
+          right: { style: 'thin', color: { argb: 'E2E8F0' } },
+        };
+      });
+      currencyKeys.forEach(key => {
+        const colIdx = colKeyToIndex.get(key);
+        if (!colIdx) return;
+        const cell = row.getCell(colIdx);
+        if (cell.value !== undefined && cell.value !== null) {
+          cell.numFmt = '#,##0';
+          cell.alignment = { horizontal: 'right', vertical: 'middle' };
+        }
+      });
+
+      // Highlight surcharge delta
+      if (isComparable) {
+        const deltaColIdx = colKeyToIndex.get('surchargeDelta');
+        if (deltaColIdx) {
+          const deltaCell = row.getCell(deltaColIdx);
+          const delta = deltaCell.value as number | null;
+          if (delta !== null && delta !== undefined) {
+            if (delta > 0) {
+              deltaCell.font = { bold: true, color: { argb: 'BE123C' } };
+            } else if (delta < 0) {
+              deltaCell.font = { bold: true, color: { argb: '15803D' } };
+            }
+          }
+        }
+      }
+    });
+
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+    sheet.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: columns.length },
+    };
+  };
+
+  buildComparisonSheet('Cont trung lap', result.duplicateRows, 'duplicate');
+  buildComparisonSheet('Cont moi phat sinh', result.newRows, 'new');
+  buildComparisonSheet('Cont da hoan thanh', result.completedRows, 'completed');
+
+  const filename = `So_sanh_doi_soat_${result.fileA.date}_vs_${result.fileB.date}.xlsx`;
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+
+  const picker = (window as Window & {
+    showSaveFilePicker?: (options?: {
+      suggestedName?: string;
+      types?: Array<{ description?: string; accept: Record<string, string[]> }>;
+    }) => Promise<{
+      createWritable: () => Promise<{ write: (data: Blob) => Promise<void>; close: () => Promise<void> }>;
+    }>;
+  }).showSaveFilePicker;
+
+  if (picker) {
+    const handle = await picker({
+      suggestedName: filename,
+      types: [
+        {
+          description: 'Excel Workbook',
+          accept: {
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+          },
+        },
+      ],
     });
     const writable = await handle.createWritable();
     await writable.write(blob);
