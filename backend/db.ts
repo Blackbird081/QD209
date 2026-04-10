@@ -40,5 +40,5 @@ export {
   TABLE_GETTERS,
   TABLE_SETTERS,
   pool,
-} from "./db-memory.js";
-//} from "./db-postgres.js";  // ← BỎ COMMENT DÒNG NÀY VÀ COMMENT DÒNG TRÊN ĐỂ DÙNG POSTGRESQL
+//} from "./db-memory.js";   // ← BẬT DÒNG NÀY ĐỂ TEST LOCAL (không cần PostgreSQL)
+} from "./db-postgres.js";   // ← PRODUCTION: dùng PostgreSQL để dữ liệu không mất khi restart
