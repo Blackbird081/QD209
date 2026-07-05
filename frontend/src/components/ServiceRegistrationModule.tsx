@@ -15,18 +15,18 @@ const T: any = {
   vi: {
     title: 'Đăng ký dịch vụ', sub: 'Phát triển bởi: Tiền/Cảng Tân Thuận', history: 'Lịch sử', lang: 'EN / VI',
     info: 'Thông tin chung', act: 'Xem trước',
-    no: 'Số ĐK', date: 'Ngày ĐK', cus: 'Tên khách hàng', addr: 'Địa chỉ', phone: 'Điện thoại', wdate: 'Ngày làm', cty: 'Loại Cont',
+    no: 'Số đăng ký', date: 'Ngày đăng ký', cus: 'Tên khách hàng', addr: 'Địa chỉ', phone: 'Điện thoại', wdate: 'Thời gian cập cảng', ldate: 'Thời gian rời cảng', cty: 'Phương tiện',
     cg: 'Hàng hóa', cgo: 'Nhập loại hàng', nts: 'Ghi chú',
-    ph: 'Phương án', sz: 'Size', sl: 'SL', sr: '- Chọn phương án -', add: '+ Thêm dòng',
+    ph: 'Phương án', sz: 'Size', sl: 'SL', tl: 'Manifest', ttl: 'Total', sr: '- Chọn phương án -', add: '+ Thêm dòng',
     new: 'Tạo mới', sav: 'Lưu', upd: 'Cập nhật', pdf: 'In / Xuất PDF', pw: 'Bản xem trước (A4)',
     warn: 'Trống', pdt: 'Đăng ký dịch vụ'
   },
   en: {
     title: 'Service Registration', sub: 'Developed by: Tien/Tan Thuan', history: 'History', lang: 'EN / VI',
     info: 'General Info', act: 'Preview',
-    no: 'Reg No.', date: 'Date', cus: 'Customer Name', addr: 'Address', phone: 'Phone', wdate: 'Work Date', cty: 'Cont Type',
+    no: 'Reg No.', date: 'Date', cus: 'Customer Name', addr: 'Address', phone: 'Phone', wdate: 'ETA', ldate: 'ETD', cty: 'Transport Type',
     cg: 'Cargo Type', cgo: 'Other Cargo', nts: 'Notes',
-    ph: 'Service', sz: 'Size', sl: 'Qty', sr: '- Select -', add: '+ Add Row',
+    ph: 'Service', sz: 'Size', sl: 'Qty', tl: 'Manifest Wt', ttl: 'Total Wt', sr: '- Select -', add: '+ Add Row',
     new: 'New', sav: 'Save', upd: 'Update', pdf: 'Print/PDF', pw: 'A4 Preview',
     warn: 'Empty', pdt: 'Service Registration'
   }
@@ -50,11 +50,12 @@ export default function ServiceRegistrationModule() {
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [workingDate, setWorkingDate] = useState('');
+  const [leaveDate, setLeaveDate] = useState('');
   const [cargoType, setCargoType] = useState('Phân bón');
   const [cargoTypeOther, setCargoTypeOther] = useState('');
   const [containerType, setContainerType] = useState('');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<RegistrationLineItem[]>([{ id: `RI-${Date.now()}`, serviceName: '', size: "20'", quantity: 1 }]);
+  const [items, setItems] = useState<RegistrationLineItem[]>([{ id: `RI-${Date.now()}`, serviceName: '', size: "20'", quantity: 1, tlManifest: 0 }]);
 
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -141,8 +142,10 @@ export default function ServiceRegistrationModule() {
 
   const regDateRef = useRef<HTMLInputElement>(null);
   const workDateRef = useRef<HTMLInputElement>(null);
+  const leaveDateRef = useRef<HTMLInputElement>(null);
   const fpRegDate = useRef<flatpickr.Instance | null>(null);
   const fpWorkDate = useRef<flatpickr.Instance | null>(null);
+  const fpLeaveDate = useRef<flatpickr.Instance | null>(null);
 
   const initFlatpickr = useCallback(() => {
     const fpConfig: flatpickr.Options.Options = {
@@ -165,6 +168,13 @@ export default function ServiceRegistrationModule() {
       });
       setWorkingDate(fpWorkDate.current.formatDate(new Date(), 'd/m/Y H:i'));
     }
+    if (leaveDateRef.current) {
+      fpLeaveDate.current = flatpickr(leaveDateRef.current, {
+        ...fpConfig,
+        onChange: (_, dateStr) => setLeaveDate(dateStr),
+      });
+      setLeaveDate(fpLeaveDate.current.formatDate(new Date(), 'd/m/Y H:i'));
+    }
   }, []);
 
   useEffect(() => {
@@ -183,6 +193,7 @@ export default function ServiceRegistrationModule() {
       window.removeEventListener('resize', handleResize);
       fpRegDate.current?.destroy();
       fpWorkDate.current?.destroy();
+      fpLeaveDate.current?.destroy();
     };
   }, []);
 
@@ -227,11 +238,12 @@ export default function ServiceRegistrationModule() {
     setRegNo(peekRegNo());
     const now = new Date();
     const nowStr = formatNow();
-    setRegDate(nowStr); setWorkingDate(nowStr);
+    setRegDate(nowStr); setWorkingDate(nowStr); setLeaveDate(nowStr);
     if (fpRegDate.current) { fpRegDate.current.setDate(now, false); }
     if (fpWorkDate.current) { fpWorkDate.current.setDate(now, false); }
+    if (fpLeaveDate.current) { fpLeaveDate.current.setDate(now, false); }
     setCustomerName(''); setCustomerAddress(''); setCustomerPhone(''); setCargoType('Phân bón'); setCargoTypeOther(''); setContainerType(''); setNotes('');
-    setItems([{ id: `RI-${Date.now()}`, serviceName: '', size: "20'", quantity: 1 }]);
+    setItems([{ id: `RI-${Date.now()}`, serviceName: '', size: "20'", quantity: 1, tlManifest: 0 }]);
     setPreviewImg(null);
   };
 
@@ -239,7 +251,7 @@ export default function ServiceRegistrationModule() {
     if (!regNo || !customerName) return alert(t.warn);
     const reg: RegistrationHistoryItem = {
       id: `REG-${regNo}`, registrationNumber: regNo, registrationDate: regDate, customerName, customerAddress, customerPhone,
-      workingDate, cargoType: cargoType === 'Phương án khác' ? cargoTypeOther : cargoType, containerType, customerNotes: notes,
+      workingDate, leaveDate, cargoType: cargoType === 'Phương án khác' ? cargoTypeOther : cargoType, containerType, customerNotes: notes,
       items: items.filter(x => x.serviceName), createdAt: new Date().toISOString()
     };
     await logiStorage.saveRegistration(reg); setHistoryItems([...historyItems, reg]); alert("Done");
@@ -301,19 +313,28 @@ export default function ServiceRegistrationModule() {
           </div>
           <div style={S.fieldRow2}>
             <div><div style={S.cLabel}>{t.wdate}</div><input ref={workDateRef} style={S.cInput} type="text" value={workingDate} readOnly placeholder="dd/mm/yyyy HH:mm" /></div>
-            <div><div style={S.cLabel}>{t.cty}</div><input style={S.cInput} value={containerType} onChange={e=>setContainerType(e.target.value)} /></div>
+            <div><div style={S.cLabel}>{t.ldate}</div><input ref={leaveDateRef} style={S.cInput} type="text" value={leaveDate} readOnly placeholder="dd/mm/yyyy HH:mm" /></div>
           </div>
           <div style={S.fieldRow2}>
+            <div>
+              <div style={S.cLabel}>{t.cty}</div>
+              <select style={S.cInput} value={containerType} onChange={e=>setContainerType(e.target.value)}>
+                <option value="">----</option>
+                <option value="Xe">Xe</option>
+                <option value="Ghe">Ghe</option>
+                <option value="Salan">Salan</option>
+              </select>
+            </div>
             <div>
               <div style={S.cLabel}>{t.cg}</div>
               <select style={S.cInput} value={cargoType} onChange={e=>setCargoType(e.target.value)}>
                 {PRE_CARGO.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
-            {cargoType === 'Phương án khác' ? (
-              <div><div style={S.cLabel}>{t.cgo}</div><input style={S.cInput} value={cargoTypeOther} onChange={e=>setCargoTypeOther(e.target.value)} /></div>
-            ) : <div></div>}
           </div>
+          {cargoType === 'Phương án khác' ? (
+            <div style={S.fieldRowSingle}><div style={S.cLabel}>{t.cgo}</div><input style={S.cInput} value={cargoTypeOther} onChange={e=>setCargoTypeOther(e.target.value)} /></div>
+          ) : null}
           <div style={S.fieldRowNotes}><div style={S.cLabel}>{t.nts}</div><input style={S.cInput} value={notes} onChange={e=>setNotes(e.target.value)} /></div>
 
           {/* TABLE */}
@@ -321,38 +342,48 @@ export default function ServiceRegistrationModule() {
             <table style={S.table}>
               <thead>
                 <tr style={S.theadRow}>
-                  <th style={S.cTh}>{t.ph}</th>
-                  <th style={{...S.cTh, width: 68, textAlign: 'center'}}>{t.sz}</th>
-                  <th style={{...S.cTh, width: 68, textAlign: 'center'}}>{t.sl}</th>
+                  <th style={{...S.cTh, textAlign: 'center', minWidth: 220}}>{t.ph}</th>
+                  <th style={{...S.cTh, width: 60, textAlign: 'center'}}>{t.sz}</th>
+                  <th style={{...S.cTh, width: 60, textAlign: 'center'}}>{t.sl}</th>
+                  <th style={{...S.cTh, width: 75, textAlign: 'center'}}>{t.tl}</th>
+                  <th style={{...S.cTh, width: 75, textAlign: 'center'}}>{t.ttl}</th>
                   <th style={{...S.cTh, width: 28}}></th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((it, idx) => (
+                {items.map((it, idx) => {
+                  const s = services.find(x => x.name === it.serviceName);
+                  return (
                   <tr key={it.id}>
                     <td style={S.cTd}>
-                      <select style={{...S.cInput, padding: '3px 6px', fontSize: 12}} value={it.serviceName} onChange={e => { const nm = [...items]; nm[idx].serviceName = e.target.value; setItems(nm); }}>
+                      <select style={{...S.cInput, padding: '3px 6px', fontSize: 12, width: '100%', textOverflow: 'ellipsis'}} value={it.serviceName} onChange={e => { const nm = [...items]; nm[idx].serviceName = e.target.value; setItems(nm); }}>
                         <option value="">{t.sr}</option>
                         {services.map(s => <option key={s.id} value={s.name}>{s.name} ({s.unit})</option>)}
                       </select>
                     </td>
                     <td style={S.cTd}>
                       <select style={{...S.cInput, padding: '3px 6px', fontSize: 12, textAlign: 'center'}} value={it.size} onChange={e => { const nm = [...items]; nm[idx].size = e.target.value; setItems(nm); }}>
-                        {["20'", "40'", "45'"].map(s => <option key={s} value={s}>{s}</option>)}
+                        {["20'", "40'", "45'"].map(sz => <option key={sz} value={sz}>{sz}</option>)}
                       </select>
                     </td>
                     <td style={S.cTd}>
                       <input style={{...S.cInput, padding: '3px 4px', fontSize: 12, textAlign:'center'}} type="number" min="1" value={it.quantity} onChange={e => { const nm = [...items]; nm[idx].quantity = parseInt(e.target.value)||1; setItems(nm); }} />
                     </td>
+                    <td style={S.cTd}>
+                      <input style={{...S.cInput, padding: '3px 4px', fontSize: 12, textAlign:'center'}} type="number" min="0" step="1" value={it.tlManifest || ''} onChange={e => { const nm = [...items]; nm[idx].tlManifest = parseFloat(e.target.value)||0; setItems(nm); }} />
+                    </td>
+                    <td style={{...S.cTd, textAlign: 'center', fontWeight: 'bold', fontSize: 12}}>
+                      {(it.quantity * (it.tlManifest || 0)).toLocaleString()}
+                    </td>
                     <td style={{...S.cTd, textAlign:'center'}}>
                       <button onClick={()=>setItems(items.filter((_,i)=>i!==idx))} disabled={!canEdit} style={{...S.removeRowBtn, ...(canEdit ? {} : {opacity:0.5, cursor:'not-allowed'})}}>×</button>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
-          <button onClick={()=>setItems([...items, {id:`RI-${Date.now()}`, serviceName:'', size:"20'", quantity:1}])} disabled={!canEdit} style={{...S.addRowBtn, ...(canEdit ? {} : {opacity:0.5, cursor:'not-allowed'})}}>{t.add}</button>
+          <button onClick={()=>setItems([...items, {id:`RI-${Date.now()}`, serviceName:'', size:"20'", quantity:1, tlManifest:0}])} disabled={!canEdit} style={{...S.addRowBtn, ...(canEdit ? {} : {opacity:0.5, cursor:'not-allowed'})}}>{t.add}</button>
         </div>
 
         {/* RIGHT PANEL */}
@@ -391,7 +422,7 @@ export default function ServiceRegistrationModule() {
                       <h3 style={{ margin: 0, fontSize: 16, fontWeight: 'bold' }}>TTĐH KHAI THÁC TÂN THUẬN</h3>
                       <p style={{ margin: '4px 0 0', fontSize: 13 }}>Điện thoại: 0901 196 093</p>
                       <p style={{ margin: '4px 0 0', fontSize: 13 }}>Địa chỉ: 18B Lưu Trọng Lư, Tân Thuận, HCM</p>
-                      <p style={{ margin: '4px 0 0', fontSize: 13 }}>Email: doc@tanthuanport.vn</p>
+                      <p style={{ margin: '4px 0 0', fontSize: 13 }}>Email: doc.tt@saigonport.vn</p>
                   </div>
               </div>
               <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
@@ -406,16 +437,18 @@ export default function ServiceRegistrationModule() {
                 <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.addr}:</td><td style={{ padding: '4px 0' }}>{customerAddress||'...'}</td></tr>
                 <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.phone}:</td><td style={{ padding: '4px 0' }}>{customerPhone||'...'}</td></tr>
                 <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.wdate}:</td><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#d32f2f' }}>{workingDate || '...'}</td></tr>
+                <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.ldate}:</td><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#d32f2f' }}>{leaveDate || '...'}</td></tr>
                 <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.cg}:</td><td style={{ padding: '4px 0' }}>{cargoType==='Phương án khác'?cargoTypeOther:cargoType}</td></tr>
-                <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.cty}:</td><td style={{ padding: '4px 0' }}>{containerType||'...'}</td></tr>
+                <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.cty}:</td><td style={{ padding: '4px 0' }}>{containerType||'----'}</td></tr>
               </tbody>
            </table>
            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 20 }}>
               <thead style={{ background: '#f2f2f2' }}>
                 <tr>
-                   <th style={{ border: '1px solid #333', padding: 8, width: '5%' }}>STT</th><th style={{ border: '1px solid #333', padding: 8, textAlign: 'left', width: '55%' }}>{t.ph}</th>
+                   <th style={{ border: '1px solid #333', padding: 8, width: '5%' }}>STT</th><th style={{ border: '1px solid #333', padding: 8, textAlign: 'center', width: '35%' }}>{t.ph}</th>
                    <th style={{ border: '1px solid #333', padding: 8 }}>{t.sz}</th><th style={{ border: '1px solid #333', padding: 8 }}>ĐVT</th>
                    <th style={{ border: '1px solid #333', padding: 8 }}>{t.sl}</th>
+                   <th style={{ border: '1px solid #333', padding: 8 }}>ĐVT</th><th style={{ border: '1px solid #333', padding: 8 }}>{t.tl}</th><th style={{ border: '1px solid #333', padding: 8 }}>{t.ttl} (tấn)</th>
                 </tr>
               </thead>
               <tbody>
@@ -427,6 +460,9 @@ export default function ServiceRegistrationModule() {
                        <td style={{ border: '1px solid #333', padding: 8, fontWeight: 'bold' }}>{item.serviceName}</td>
                        <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center' }}>{item.size}</td><td style={{ border: '1px solid #333', padding: 8, textAlign: 'center' }}>{s?s.unit:'-'}</td>
                        <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center', fontWeight: 'bold', color: '#d32f2f' }}>{item.quantity}</td>
+                       <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center' }}>tấn</td>
+                       <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center' }}>{item.tlManifest || ''}</td>
+                       <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center', fontWeight: 'bold' }}>{(item.quantity * (item.tlManifest || 0)).toLocaleString()}</td>
                      </tr>
                    )
                 })}
@@ -434,11 +470,11 @@ export default function ServiceRegistrationModule() {
            </table>
            <div style={{ background: '#f9f9f9', border: '1px solid #ccc', padding: 12, fontSize: 12 }}>
                <p style={{ margin: '0 0 6px 0', fontWeight: 'bold', textDecoration: 'underline' }}>Lưu ý:</p>
-               <ul style={{ margin: 0, paddingLeft: 20, lineHeight: 1.6 }}>
-                 <li style={{ marginBottom: 4 }}>Chúng tôi ghi nhận theo thông tin khách hàng cung cấp, vui lòng kiểm tra lại phương án.</li>
-                 <li style={{ marginBottom: 4 }}>Khi thay đổi kế hoạch làm hàng: vui lòng liên hệ, báo lại thời gian mới để chúng tôi chuẩn bị phương tiện, thiết bị...</li>
-                 <li style={{ marginBottom: 4 }}>Đối với phương án đóng/rút/sang container, chúng tôi không chịu trách nhiệm việc tháo gỡ, chằng buộc hàng hoá, cũng như các hư hỏng bên trong container như xước, gãy ván sàn...</li>
-                 <li>Nếu hàng hoá thực tế khác thông tin ban đầu hoặc ngoài khả năng đáp ứng của thiết bị tại Cảng. Phương án làm hàng sẽ được điều chỉnh theo hiện trường.</li>
+               <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', lineHeight: 1.6 }}>
+                 <li style={{ marginBottom: 4, display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>Chúng tôi ghi nhận theo thông tin khách hàng cung cấp, vui lòng kiểm tra lại phương án.</span></li>
+                 <li style={{ marginBottom: 4, display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>Khi thay đổi kế hoạch làm hàng: vui lòng liên hệ, báo lại thời gian mới để chúng tôi chuẩn bị phương tiện, thiết bị...</span></li>
+                 <li style={{ marginBottom: 4, display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>Đối với phương án đóng/rút/sang container, chúng tôi không chịu trách nhiệm việc tháo gỡ, chằng buộc hàng hoá, cũng như các hư hỏng bên trong container như xước, gãy ván sàn...</span></li>
+                 <li style={{ display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>Nếu hàng hoá thực tế khác thông tin ban đầu hoặc ngoài khả năng đáp ứng của thiết bị tại Cảng. Phương án làm hàng sẽ được điều chỉnh theo hiện trường.</span></li>
                </ul>
             </div>
         </div>
@@ -506,7 +542,7 @@ export default function ServiceRegistrationModule() {
                       <td style={S.cTd}>{h.customerName}</td>
                       <td style={S.cTd}>{new Date(h.workingDate).toLocaleDateString('vi-VN')}</td>
                       <td style={{...S.cTd, textAlign: 'center'}}>
-                        <button onClick={()=>{setRegNo(h.registrationNumber); setCustomerName(h.customerName); setCustomerAddress(h.customerAddress); setCustomerPhone(h.customerPhone); setCargoType(PRE_CARGO.includes(h.cargoType)?h.cargoType:''); setContainerType(h.containerType); setItems(h.items||[]); setIsHistoryModalOpen(false);}} style={S.historyViewBtn}>Xem lại</button>
+                        <button onClick={()=>{setRegNo(h.registrationNumber); setCustomerName(h.customerName); setCustomerAddress(h.customerAddress); setCustomerPhone(h.customerPhone); setCargoType(PRE_CARGO.includes(h.cargoType)?h.cargoType:''); setContainerType(h.containerType); setWorkingDate(h.workingDate||''); setLeaveDate(h.leaveDate||''); setItems(h.items||[]); setIsHistoryModalOpen(false);}} style={S.historyViewBtn}>Xem lại</button>
                       </td>
                     </tr>
                   ))}

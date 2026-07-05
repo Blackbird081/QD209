@@ -104,6 +104,7 @@ export interface RegistrationLineItem {
   serviceName: string; // Tên phương án
   size: string;        // 20', 40', 45'
   quantity: number;
+  tlManifest?: number;
 }
 
 export interface RegistrationHistoryItem {
@@ -114,6 +115,7 @@ export interface RegistrationHistoryItem {
   customerAddress: string;
   customerPhone: string;
   workingDate: string;
+  leaveDate?: string;
   cargoType: string;
   containerType: string;
   customerNotes: string;
