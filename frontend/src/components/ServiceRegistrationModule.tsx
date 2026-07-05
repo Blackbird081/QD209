@@ -19,7 +19,15 @@ const T: any = {
     cg: 'Hàng hóa', cgo: 'Nhập loại hàng', nts: 'Ghi chú',
     ph: 'Phương án', sz: 'Size', sl: 'SL', tl: 'Manifest', ttl: 'Total', sr: '- Chọn phương án -', add: '+ Thêm dòng',
     new: 'Tạo mới', sav: 'Lưu', upd: 'Cập nhật', pdf: 'In / Xuất PDF', pw: 'Bản xem trước (A4)',
-    warn: 'Trống', pdt: 'Đăng ký dịch vụ'
+    warn: 'Trống', pdt: 'ĐĂNG KÝ DỊCH VỤ',
+    notesHeader: 'Lưu ý:',
+    note1: 'Chúng tôi ghi nhận theo thông tin khách hàng cung cấp, vui lòng kiểm tra lại phương án.',
+    note2: 'Khi thay đổi kế hoạch làm hàng: vui lòng liên hệ, báo lại thời gian mới để chúng tôi chuẩn bị phương tiện, thiết bị...',
+    note3: 'Đối với phương án đóng/rút/sang container, chúng tôi không chịu trách nhiệm việc tháo gỡ, chằng buộc hàng hoá, cũng như các hư hỏng bên trong container như xước, gãy ván sàn...',
+    note4: 'Nếu hàng hoá thực tế khác thông tin ban đầu hoặc ngoài khả năng đáp ứng của thiết bị tại Cảng. Phương án làm hàng sẽ được điều chỉnh theo hiện trường.',
+    unitTons: 'tấn',
+    unitItem: 'ĐVT',
+    stt: 'STT',
   },
   en: {
     title: 'Service Registration', sub: 'Developed by: Tien/Tan Thuan', history: 'History', lang: 'EN / VI',
@@ -28,7 +36,15 @@ const T: any = {
     cg: 'Cargo Type', cgo: 'Other Cargo', nts: 'Notes',
     ph: 'Service', sz: 'Size', sl: 'Qty', tl: 'Manifest Wt', ttl: 'Total Wt', sr: '- Select -', add: '+ Add Row',
     new: 'New', sav: 'Save', upd: 'Update', pdf: 'Print/PDF', pw: 'A4 Preview',
-    warn: 'Empty', pdt: 'Service Registration'
+    warn: 'Empty', pdt: 'SERVICE REGISTRATION',
+    notesHeader: 'Notes:',
+    note1: 'We record the information based on the details provided by the customer; please review the handling plan carefully.',
+    note2: 'If there are any changes to the work schedule, please contact us to provide the new time so we can prepare the necessary vehicles and equipment.',
+    note3: 'For stuffing/unstuffing services, we are not responsible for lashing/unlashing or securing/unsecuring cargo, nor for any internal container damages such as scratches, broken floorboards, etc.',
+    note4: 'If the actual cargo differs from the initial information or exceeds the handling capacity of the Port’s equipment, the cargo handling plan will be adjusted according to on-site conditions.',
+    unitTons: 'tons',
+    unitItem: 'Unit',
+    stt: 'No.',
   }
 };
 
@@ -55,7 +71,7 @@ export default function ServiceRegistrationModule() {
   const [cargoTypeOther, setCargoTypeOther] = useState('');
   const [containerType, setContainerType] = useState('');
   const [notes, setNotes] = useState('');
-  const [items, setItems] = useState<RegistrationLineItem[]>([{ id: `RI-${Date.now()}`, serviceName: '', size: "20'", quantity: 1, tlManifest: 0 }]);
+  const [items, setItems] = useState<any[]>([{ id: `RI-${Date.now()}`, serviceName: '', size: "20'", quantity: 1, tlManifest: '' }]);
 
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
@@ -78,7 +94,7 @@ export default function ServiceRegistrationModule() {
       newServices = [...services, s];
     }
     setServices(newServices);
-    localStorage.setItem('logipro_registration_tariff', JSON.stringify(newServices));
+    localStorage.setItem(`logipro_registration_tariff_${lang}`, JSON.stringify(newServices));
     setServiceForm({ name: '', unit: 'cont' });
     setEditServiceId(null);
   };
@@ -106,7 +122,7 @@ export default function ServiceRegistrationModule() {
         if (newList.length === 0) return alert('Không tìm thấy dữ liệu hợp lệ (Cột: Tên Dịch Vụ, Đơn Vị Tính)');
         if (confirm(`Tìm thấy ${newList.length} phương án. Xóa toàn bộ hiển thị cũ và thay thế bằng File Excel này?`)) {
           setServices(newList);
-          localStorage.setItem('logipro_registration_tariff', JSON.stringify(newList));
+          localStorage.setItem(`logipro_registration_tariff_${lang}`, JSON.stringify(newList));
           alert('Import thành công! Dữ liệu đã lưu cục bộ trên máy của bạn.');
         }
       } catch (err) { alert('Lỗi định dạng tệp Excel: ' + (err as Error).message); }
@@ -138,7 +154,27 @@ export default function ServiceRegistrationModule() {
   const [isRendering, setIsRendering] = useState(false);
   const a4Ref = useRef<HTMLDivElement>(null);
 
-  const PRE_CARGO = ['Phân bón', 'Vải cuộn', 'Nông sản', 'Pallet Hạt nhựa', 'Gạch', 'Tôn cuộn', 'Cao su', 'Sứ vệ sinh', 'Phương án khác'];
+  const PRE_CARGO = ['Phân bón', 'Vải cuộn', 'Nông sản', 'Pallet Hạt nhựa', 'Gạch', 'Tôn cuộn', 'Cao su', 'Sứ vệ sinh', 'Container rỗng', 'Container hàng', 'Phương án khác'];
+
+  const CARGO_MAP: Record<string, { vi: string, en: string }> = {
+    'Phân bón': { vi: 'Phân bón', en: 'Fertilizer' },
+    'Vải cuộn': { vi: 'Vải cuộn', en: 'Fabric Rolls' },
+    'Nông sản': { vi: 'Nông sản', en: 'Agricultural Products' },
+    'Pallet Hạt nhựa': { vi: 'Pallet Hạt nhựa', en: 'Plastic Resin Pallets' },
+    'Gạch': { vi: 'Gạch', en: 'Bricks' },
+    'Tôn cuộn': { vi: 'Tôn cuộn', en: 'Steel Coils' },
+    'Cao su': { vi: 'Cao su', en: 'Rubber' },
+    'Sứ vệ sinh': { vi: 'Sứ vệ sinh', en: 'Ceramic Sanitary Ware' },
+    'Container rỗng': { vi: 'Container rỗng', en: 'Empty container' },
+    'Container hàng': { vi: 'Container hàng', en: 'Laden container' },
+    'Phương án khác': { vi: 'Phương án khác', en: 'Other Cargo' }
+  };
+
+  const VEHICLE_MAP: Record<string, { vi: string, en: string }> = {
+    'Xe': { vi: 'Xe', en: 'Truck' },
+    'Ghe': { vi: 'Ghe', en: 'Wooden boat' },
+    'Salan': { vi: 'Sà lan', en: 'Barge' }
+  };
 
   const regDateRef = useRef<HTMLInputElement>(null);
   const workDateRef = useRef<HTMLInputElement>(null);
@@ -186,7 +222,6 @@ export default function ServiceRegistrationModule() {
       const cvs = document.createElement('canvas'); cvs.width = img.naturalWidth || img.width; cvs.height = img.naturalHeight || img.height;
       const ctx = cvs.getContext('2d'); if (ctx) { ctx.drawImage(img, 0, 0); setLogoBase64(cvs.toDataURL('image/png')); }
     };
-    loadData();
     setRegNo(peekRegNo());
     initFlatpickr();
     return () => {
@@ -197,12 +232,29 @@ export default function ServiceRegistrationModule() {
     };
   }, []);
 
-  const loadData = async () => {
-    const local = localStorage.getItem('logipro_registration_tariff');
+  useEffect(() => {
+    loadData(lang);
+  }, [lang]);
+
+  const loadData = async (currentLang: 'vi' | 'en') => {
+    const key = `logipro_registration_tariff_${currentLang}`;
+    const local = localStorage.getItem(key);
     if (!local) {
-      const def = [{ id: '1', name: 'Vận chuyển cont nội bộ', unit: 'cont' }, { id: '2', name: 'Đóng hàng cont => xe', unit: 'cont' }, { id: '3', name: 'Rút hàng xe => cont', unit: 'cont' }];
-      setServices(def); 
-      localStorage.setItem('logipro_registration_tariff', JSON.stringify(def));
+      const def = currentLang === 'vi' ? [
+        { id: '1', name: 'Vận chuyển cont nội bộ Cảng', unit: 'cont' },
+        { id: '2', name: 'Đóng hàng cont => xe', unit: 'cont' },
+        { id: '3', name: 'Rút hàng xe => cont', unit: 'cont' },
+        { id: '4', name: 'Đóng hàng từ Sà lan => Container', unit: 'cont' },
+        { id: '5', name: 'Rút hàng từ Container => Sà lan (cont)', unit: 'cont' },
+      ] : [
+        { id: '1', name: 'Internal container transport', unit: 'cont' },
+        { id: '2', name: 'Stuffing from container to truck', unit: 'cont' },
+        { id: '3', name: 'Unstuffing from truck to container', unit: 'cont' },
+        { id: '4', name: 'Stuffing cargo from Barge -> Container', unit: 'cont' },
+        { id: '5', name: 'Unstuffing cargo from Container => Barge (cont)', unit: 'cont' },
+      ];
+      setServices(def);
+      localStorage.setItem(key, JSON.stringify(def));
     } else {
       setServices(JSON.parse(local));
     }
@@ -243,7 +295,7 @@ export default function ServiceRegistrationModule() {
     if (fpWorkDate.current) { fpWorkDate.current.setDate(now, false); }
     if (fpLeaveDate.current) { fpLeaveDate.current.setDate(now, false); }
     setCustomerName(''); setCustomerAddress(''); setCustomerPhone(''); setCargoType('Phân bón'); setCargoTypeOther(''); setContainerType(''); setNotes('');
-    setItems([{ id: `RI-${Date.now()}`, serviceName: '', size: "20'", quantity: 1, tlManifest: 0 }]);
+    setItems([{ id: `RI-${Date.now()}`, serviceName: '', size: "20'", quantity: 1, tlManifest: '' }]);
     setPreviewImg(null);
   };
 
@@ -252,7 +304,12 @@ export default function ServiceRegistrationModule() {
     const reg: RegistrationHistoryItem = {
       id: `REG-${regNo}`, registrationNumber: regNo, registrationDate: regDate, customerName, customerAddress, customerPhone,
       workingDate, leaveDate, cargoType: cargoType === 'Phương án khác' ? cargoTypeOther : cargoType, containerType, customerNotes: notes,
-      items: items.filter(x => x.serviceName), createdAt: new Date().toISOString()
+      items: items.filter(x => x.serviceName).map(x => ({
+        ...x,
+        quantity: parseInt(x.quantity) || 0,
+        tlManifest: parseFloat(x.tlManifest) || 0,
+      })),
+      createdAt: new Date().toISOString()
     };
     await logiStorage.saveRegistration(reg); setHistoryItems([...historyItems, reg]); alert("Done");
     advanceRegNo();
@@ -320,15 +377,18 @@ export default function ServiceRegistrationModule() {
               <div style={S.cLabel}>{t.cty}</div>
               <select style={S.cInput} value={containerType} onChange={e=>setContainerType(e.target.value)}>
                 <option value="">----</option>
-                <option value="Xe">Xe</option>
-                <option value="Ghe">Ghe</option>
-                <option value="Salan">Salan</option>
+                {Object.keys(VEHICLE_MAP).map(k => (
+                  <option key={k} value={k}>{VEHICLE_MAP[k][lang]}</option>
+                ))}
               </select>
             </div>
             <div>
               <div style={S.cLabel}>{t.cg}</div>
               <select style={S.cInput} value={cargoType} onChange={e=>setCargoType(e.target.value)}>
-                {PRE_CARGO.map(c => <option key={c} value={c}>{c}</option>)}
+                {PRE_CARGO.map(c => {
+                  const label = CARGO_MAP[c]?.[lang] || c;
+                  return <option key={c} value={c}>{label}</option>;
+                })}
               </select>
             </div>
           </div>
@@ -367,13 +427,13 @@ export default function ServiceRegistrationModule() {
                       </select>
                     </td>
                     <td style={S.cTd}>
-                      <input style={{...S.cInput, padding: '3px 4px', fontSize: 12, textAlign:'center'}} type="number" min="1" value={it.quantity} onChange={e => { const nm = [...items]; nm[idx].quantity = parseInt(e.target.value)||1; setItems(nm); }} />
+                      <input style={{...S.cInput, padding: '3px 4px', fontSize: 12, textAlign:'center'}} type="number" min="1" value={it.quantity} onChange={e => { const val = e.target.value; const nm = [...items]; nm[idx].quantity = val === '' ? '' : parseInt(val) || 0; setItems(nm); }} />
                     </td>
                     <td style={S.cTd}>
-                      <input style={{...S.cInput, padding: '3px 4px', fontSize: 12, textAlign:'center'}} type="number" min="0" step="1" value={it.tlManifest || ''} onChange={e => { const nm = [...items]; nm[idx].tlManifest = parseFloat(e.target.value)||0; setItems(nm); }} />
+                      <input style={{...S.cInput, padding: '3px 4px', fontSize: 12, textAlign:'center'}} type="number" min="0" step="1" value={it.tlManifest} onChange={e => { const val = e.target.value; const nm = [...items]; nm[idx].tlManifest = val === '' ? '' : parseFloat(val) || 0; setItems(nm); }} />
                     </td>
                     <td style={{...S.cTd, textAlign: 'center', fontWeight: 'bold', fontSize: 12}}>
-                      {(it.quantity * (it.tlManifest || 0)).toLocaleString()}
+                      {((parseFloat(it.quantity) || 0) * (parseFloat(it.tlManifest) || 0)).toLocaleString()}
                     </td>
                     <td style={{...S.cTd, textAlign:'center'}}>
                       <button onClick={()=>setItems(items.filter((_,i)=>i!==idx))} disabled={!canEdit} style={{...S.removeRowBtn, ...(canEdit ? {} : {opacity:0.5, cursor:'not-allowed'})}}>×</button>
@@ -383,7 +443,7 @@ export default function ServiceRegistrationModule() {
               </tbody>
             </table>
           </div>
-          <button onClick={()=>setItems([...items, {id:`RI-${Date.now()}`, serviceName:'', size:"20'", quantity:1, tlManifest:0}])} disabled={!canEdit} style={{...S.addRowBtn, ...(canEdit ? {} : {opacity:0.5, cursor:'not-allowed'})}}>{t.add}</button>
+          <button onClick={()=>setItems([...items, {id:`RI-${Date.now()}`, serviceName:'', size:"20'", quantity:1, tlManifest:''}])} disabled={!canEdit} style={{...S.addRowBtn, ...(canEdit ? {} : {opacity:0.5, cursor:'not-allowed'})}}>{t.add}</button>
         </div>
 
         {/* RIGHT PANEL */}
@@ -426,8 +486,8 @@ export default function ServiceRegistrationModule() {
                   </div>
               </div>
               <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                  <p style={{ margin: 0, fontSize: 14 }}>Số: <span style={{ color: '#000' }}>{regNo}</span></p>
-                  <p style={{ margin: '6px 0 0', fontSize: 14 }}><strong>Ngày:</strong> {regDate || '...'}</p>
+                  <p style={{ margin: 0, fontSize: 14 }}>{lang === 'vi' ? 'Số:' : 'No.:'} <span style={{ color: '#000' }}>{regNo}</span></p>
+                  <p style={{ margin: '6px 0 0', fontSize: 14 }}><strong>{lang === 'vi' ? 'Ngày' : 'Date'}:</strong> {regDate || '...'}</p>
               </div>
            </div>
            <h1 style={{ textAlign: 'center', fontSize: 22, fontWeight: 'bold', textTransform: 'uppercase', marginBottom: 20 }}>{t.pdt}</h1>
@@ -438,17 +498,17 @@ export default function ServiceRegistrationModule() {
                 <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.phone}:</td><td style={{ padding: '4px 0' }}>{customerPhone||'...'}</td></tr>
                 <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.wdate}:</td><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#d32f2f' }}>{workingDate || '...'}</td></tr>
                 <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.ldate}:</td><td style={{ padding: '4px 0', fontWeight: 'bold', color: '#d32f2f' }}>{leaveDate || '...'}</td></tr>
-                <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.cg}:</td><td style={{ padding: '4px 0' }}>{cargoType==='Phương án khác'?cargoTypeOther:cargoType}</td></tr>
-                <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.cty}:</td><td style={{ padding: '4px 0' }}>{containerType||'----'}</td></tr>
+                <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.cg}:</td><td style={{ padding: '4px 0' }}>{cargoType==='Phương án khác'?cargoTypeOther:(CARGO_MAP[cargoType]?.[lang]||cargoType)}</td></tr>
+                <tr><td style={{ whiteSpace: 'nowrap', fontWeight: 'bold', padding: '4px 0' }}>{t.cty}:</td><td style={{ padding: '4px 0' }}>{VEHICLE_MAP[containerType]?.[lang]||'----'}</td></tr>
               </tbody>
            </table>
            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, marginBottom: 20 }}>
               <thead style={{ background: '#f2f2f2' }}>
                 <tr>
-                   <th style={{ border: '1px solid #333', padding: 8, width: '5%' }}>STT</th><th style={{ border: '1px solid #333', padding: 8, textAlign: 'center', width: '35%' }}>{t.ph}</th>
-                   <th style={{ border: '1px solid #333', padding: 8 }}>{t.sz}</th><th style={{ border: '1px solid #333', padding: 8 }}>ĐVT</th>
+                   <th style={{ border: '1px solid #333', padding: 8, width: '5%' }}>{t.stt}</th><th style={{ border: '1px solid #333', padding: 8, textAlign: 'center', width: '35%' }}>{t.ph}</th>
+                   <th style={{ border: '1px solid #333', padding: 8 }}>{t.sz}</th><th style={{ border: '1px solid #333', padding: 8 }}>{t.unitItem}</th>
                    <th style={{ border: '1px solid #333', padding: 8 }}>{t.sl}</th>
-                   <th style={{ border: '1px solid #333', padding: 8 }}>ĐVT</th><th style={{ border: '1px solid #333', padding: 8 }}>{t.tl}</th><th style={{ border: '1px solid #333', padding: 8 }}>{t.ttl} (tấn)</th>
+                   <th style={{ border: '1px solid #333', padding: 8 }}>{t.unitItem}</th><th style={{ border: '1px solid #333', padding: 8 }}>{t.tl}</th><th style={{ border: '1px solid #333', padding: 8 }}>{t.ttl} ({t.unitTons})</th>
                 </tr>
               </thead>
               <tbody>
@@ -460,21 +520,21 @@ export default function ServiceRegistrationModule() {
                        <td style={{ border: '1px solid #333', padding: 8, fontWeight: 'bold' }}>{item.serviceName}</td>
                        <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center' }}>{item.size}</td><td style={{ border: '1px solid #333', padding: 8, textAlign: 'center' }}>{s?s.unit:'-'}</td>
                        <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center', fontWeight: 'bold', color: '#d32f2f' }}>{item.quantity}</td>
-                       <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center' }}>tấn</td>
+                       <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center' }}>{t.unitTons}</td>
                        <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center' }}>{item.tlManifest || ''}</td>
-                       <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center', fontWeight: 'bold' }}>{(item.quantity * (item.tlManifest || 0)).toLocaleString()}</td>
+                       <td style={{ border: '1px solid #333', padding: 8, textAlign: 'center', fontWeight: 'bold' }}>{((parseFloat(item.quantity) || 0) * (parseFloat(item.tlManifest) || 0)).toLocaleString()}</td>
                      </tr>
                    )
                 })}
               </tbody>
            </table>
            <div style={{ background: '#f9f9f9', border: '1px solid #ccc', padding: 12, fontSize: 12 }}>
-               <p style={{ margin: '0 0 6px 0', fontWeight: 'bold', textDecoration: 'underline' }}>Lưu ý:</p>
+               <p style={{ margin: '0 0 6px 0', fontWeight: 'bold', textDecoration: 'underline' }}>{t.notesHeader}</p>
                <ul style={{ margin: 0, paddingLeft: 0, listStyle: 'none', lineHeight: 1.6 }}>
-                 <li style={{ marginBottom: 4, display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>Chúng tôi ghi nhận theo thông tin khách hàng cung cấp, vui lòng kiểm tra lại phương án.</span></li>
-                 <li style={{ marginBottom: 4, display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>Khi thay đổi kế hoạch làm hàng: vui lòng liên hệ, báo lại thời gian mới để chúng tôi chuẩn bị phương tiện, thiết bị...</span></li>
-                 <li style={{ marginBottom: 4, display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>Đối với phương án đóng/rút/sang container, chúng tôi không chịu trách nhiệm việc tháo gỡ, chằng buộc hàng hoá, cũng như các hư hỏng bên trong container như xước, gãy ván sàn...</span></li>
-                 <li style={{ display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>Nếu hàng hoá thực tế khác thông tin ban đầu hoặc ngoài khả năng đáp ứng của thiết bị tại Cảng. Phương án làm hàng sẽ được điều chỉnh theo hiện trường.</span></li>
+                 <li style={{ marginBottom: 4, display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>{t.note1}</span></li>
+                 <li style={{ marginBottom: 4, display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>{t.note2}</span></li>
+                 <li style={{ marginBottom: 4, display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>{t.note3}</span></li>
+                 <li style={{ display: 'flex', gap: 6 }}><span style={{ color: '#28a745' }}>✔</span><span>{t.note4}</span></li>
                </ul>
             </div>
         </div>
@@ -510,7 +570,7 @@ export default function ServiceRegistrationModule() {
                       <td style={{...S.cTd, textAlign: 'center'}}>{s.unit}</td>
                       <td style={{...S.cTd, textAlign: 'center'}}>
                         <button onClick={()=>{setEditServiceId(s.id); setServiceForm({name: s.name, unit: s.unit});}} style={S.editBtn}>Xem</button>
-                        <button onClick={()=>{if(confirm('Xóa?')){ const newList = services.filter(x=>x.id!==s.id); setServices(newList); localStorage.setItem('logipro_registration_tariff', JSON.stringify(newList)); }}} style={S.deleteBtn}>Xóa</button>
+                        <button onClick={()=>{if(confirm('Xóa?')){ const newList = services.filter(x=>x.id!==s.id); setServices(newList); localStorage.setItem(`logipro_registration_tariff_${lang}`, JSON.stringify(newList)); }}} style={S.deleteBtn}>Xóa</button>
                       </td>
                     </tr>
                   ))}
